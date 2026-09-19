@@ -49,7 +49,6 @@ class Main(lineWidth: Int = 512) extends Module {
     core.io.dcache_ready := memory.io.dcache_ready
     core.io.dcache_valid := memory.io.dcache_valid
     core.io.dcache_data := memory.io.dcache_data
-    core.io.handshake_bypass := memory.io.handshake_bypass
     memory.io.dcache_rd := core.io.dcache_rd
     memory.io.dcache_wen := core.io.dcache_wen 
 

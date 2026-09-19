@@ -23,7 +23,6 @@ class Execute() extends Module {
     val dcache_data = Input(UInt(32.W))
     val dcache_rd = Output(UInt(5.W))
     val dcache_wen = Output(Bool())
-    val handshake_bypass = Input(Bool())
 
     val memory_stall = Output(Bool())
 		val jump_flush = Output(Bool())
@@ -68,18 +67,6 @@ class Execute() extends Module {
 
 
 
-
-  // when(true.B){
-  //   printf("EXECUTE %b\n",io.instruction.valid)
-  //   printf("Exec flush %b stall %b" , io.flush, io.stall)
-  //   when(io.instruction.valid){
-  //     printf("EXEC opcode: %b", io.instruction.bits.opcode)
-  //   }
-  // }
-
-  // when(inst.rs1 === 19.U || inst.rs2 === 19.U || inst.rd === 19.U){
-  //         printf("inst.opcode: %b  inst.func7: %b inst.func3 %b inst rs1: %d rs2  %d rd %d rs1 valpc: %d\n",inst.opcode, inst.func7, inst.func3, inst.rs1, inst.rs2, inst.rd, inst.pc )
-  // }
   val flush_delay = RegNext(io.jump_flush, false.B)
   switch(state) {
     is(ExecState.IDLE) {
@@ -93,7 +80,6 @@ class Execute() extends Module {
         val pc_plus_4 = inst.pc + 4.U
         val pc_plus_imm = inst.pc + inst.immediate
         val addr = inst.rs1_val + inst.immediate
-        // printf("RS1Val %d Imm %d pc %d rs1 %d\n", inst.rs1_val, inst.immediate,inst.pc, inst.rs1)
         
         bundle := inst
         bundle.rd_wen := false.B
@@ -114,16 +100,8 @@ class Execute() extends Module {
             bundle.rd_val := Mux(isM,malu.io.output,alu.io.output)
             bundle.rd_wen := true.B
             io.memory_stall :=  isM && !malu.io.valid
-            when(malu.io.valid){
-              // printf("not stall alu malu out: %d\n",malu.io.output )
-            }
-            // printf(" io.memory_stall %b \n", !malu.io.valid && isM)
-    //          printf("ALU pc=%x rd=%d rs1=%x rs2_val=%x imm=%x result=%x\n",
-    // inst.pc, inst.rd, inst.rs1_val, inst.rs2_val, inst.immediate, alu.io.output)
-            // when(io.instruction.valid){
-            //     // printf("EXEC ALUUUUUUUUUUUUUUUUUUu: %b", io.instruction.bits.opcode)
-            // }
-            
+
+
           }
 
           // Branch
@@ -140,11 +118,7 @@ class Execute() extends Module {
             io.pc_redirect.bits := target
             bundle.rd_wen := false.B
             io.jump_flush := take_branch
-            // printf("BRANCH  redir pc: %d inst pc: %d taken %d \n",pc_plus_imm, inst.pc, take_branch)
 
-    //           printf("BRANCH rs1=%x rs2=%x take=%b target=%x flush=%b imm= %x pc=%x\n",
-    // inst.rs1_val, inst.rs2_val, take_branch, target, io.jump_flush, inst.immediate, inst.pc)
-           
           }
 
           // LUI
@@ -175,7 +149,6 @@ class Execute() extends Module {
 
           // JALR
           is("b1100111".U) {
-                                    // printf("JALR target pc: %d inst pc: %d\n",pc_plus_imm, inst.pc)
 
             val target = addr & ~1.U(32.W)
             bundle.rd_val := pc_plus_4
@@ -208,24 +181,14 @@ class Execute() extends Module {
           // }
             
 
-            when(!io.handshake_bypass){
-              // state := ExecState.MEM_WAIT
-              bundle.rd_wen := false.B  
-              valid := io.dcache_ready
-            }.otherwise{
-              valid := true.B
-              bundle.hbp := true.B
-              bundle.rd_val := io.dcache_data
-              io.memory_stall := false.B        
-              bundle.rd_wen := true.B     
-            }
+            bundle.rd_wen := false.B
+            valid := io.dcache_ready
         
            
           }
 
           // Store
           is("b0100011".U) {
-            // printf("STORING STORING %x addr: %x inst: %d, bypass : %b\n",inst.rs2_val, addr, inst.pc, io.handshake_bypass)
             io.dcache_req.address := addr
        
             io.dcache_req.write_data := inst.rs2_val
@@ -241,16 +204,6 @@ class Execute() extends Module {
             io.dcache_wen := false.B
             io.memory_stall := !io.dcache_ready
             bundle.rd_wen := false.B
-            when(!io.handshake_bypass){
-
-            }.otherwise{
-              // printf("\nHANDSHAKE BYPASSING \n")
-              valid := true.B
-              io.memory_stall := false.B
-              bundle.hbp := true.B
-
-             
-            }
           }
 
           // FENCE — treat as NOP
@@ -263,18 +216,7 @@ class Execute() extends Module {
       }
     }
 
-    // is(ExecState.MEM_WAIT) {
-    //   io.memory_stall := true.B
-    //  when(io.dcache_valid || io.handshake_bypass) {
-    //     state := ExecState.IDLE
-  
-    //     io.memory_stall := false.B
-    //     io.next_instruction.valid := true.B
-    //     io.next_instruction.bits := bundle
-    //     io.next_instruction.bits.rd_val := io.dcache_data
-    //     valid := false.B
-    //   }
-    // }
+
   }
 
   when(state === ExecState.IDLE) {

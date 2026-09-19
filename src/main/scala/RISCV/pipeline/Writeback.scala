@@ -45,7 +45,7 @@ class Writeback() extends Module {
     // printf("WRITING MEM: rd: %d   val: %d", io.mem_rd, io.mem_write_data )
   }
   when(io.instruction.valid || io.mem_write_enable){
-    when(io.instruction.valid && !io.instruction.bits.hbp &&io.instruction.bits.opcode === "b0000011".U){
+    when(io.instruction.valid && io.instruction.bits.opcode === "b0000011".U){
       mem_rum_w := mem_rum | (1.U(32.W) << io.instruction.bits.rd)
     }
     mem_rum_w2 := mem_rum_w

@@ -40,16 +40,12 @@ class Read() extends Module {
       bundle.rs2_val := io.register_value_b
   }
 
-  // when(!io.stall){
-  //   bundle_w.rs1_val := io.register_value_a
-  //   bundle_w.rs2_val := io.register_value_b
-  // }
+
   io.next_instruction.bits := bundle_w
 
 
   io.next_instruction.valid := valid
 
-  // printf("READ STAGE  ASDFNAKFNDA rs1 %d rs1val %d\n",io.instruction.bits.rs1,io.next_instruction.bits.rs1_val)
   
   
 }
