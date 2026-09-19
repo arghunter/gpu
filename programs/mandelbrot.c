@@ -71,9 +71,9 @@ void draw_mandelbrot(volatile unsigned int* frame, int cx, int cy, int zoom) {
     trace("draw: cy=", (unsigned int)cy);
     trace("draw: zoom=", (unsigned int)zoom);
     trace("draw: x_start=", (unsigned int)x_start);
-    trace("draw: y_start=", (unsigned int)y_start);
-    trace("draw: x_step=", (unsigned int)x_step);
-    trace("draw: y_step=", (unsigned int)y_step);
+    // trace("draw: y_start=", (unsigned int)y_start);
+    // trace("draw: x_step=", (unsigned int)x_step);
+    // trace("draw: y_step=", (unsigned int)y_step);
 
     for (int py = 0; py < 240; py++) {
         int ci = y_start + py * y_step;
