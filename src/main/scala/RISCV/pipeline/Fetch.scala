@@ -3,7 +3,7 @@ import chisel3._
 import chisel3.util._
 
 object FetchOp extends ChiselEnum {
-  val ST, RD, DQ = Value // Stall, Redirect, Dequeue
+  val ST, RD, DQ, WS = Value // Stall, Redirect, Dequeue, Warp Switch
 }
 
 class FetchReq extends Bundle {
@@ -23,6 +23,10 @@ class Fetch() extends Module {
 
 		val active_warp = Input(UInt(2.W))
 
+		val mark = Input(Bool())
+		val mark_pc = Input(UInt(32.W))
+		val mark_warp = Input(UInt(2.W))
+
 		val fetch_request = Input(new FetchReq)
 		val fetch_result = Output(Valid(new FetchResult))
 		
@@ -33,9 +37,12 @@ class Fetch() extends Module {
 		val icache_data  = Input(UInt(32.W))
 	})
 
-	// RegInit(VecInit(Seq.fill(4.toInt)(0.U(32.W))))
-
+	val speculative_instruction_pointers = RegInit(VecInit(Seq.fill(4.toInt)(0.U(32.W))))
 	val instruction_pointers = RegInit(VecInit(Seq.fill(4.toInt)(0.U(32.W))))
+
+	when(io.mark) {
+		instruction_pointers(io.mark_warp) := io.mark_pc
+	}
 	
 	val ignore_instruction = RegInit(false.B)
 	val request_instruction_pointer = RegInit(0.U(32.W))
@@ -44,7 +51,7 @@ class Fetch() extends Module {
 	val fetch_result = Reg(new FetchResult)
 	val fetch_result_valid = RegInit(false.B)
 
-	io.icache_req.address := instruction_pointers(io.active_warp)
+	io.icache_req.address := speculative_instruction_pointers(io.active_warp)
 	io.icache_req.op := MemOp.LW
 	io.icache_req.write_data := 0.U
 	io.icache_req.read := true.B
@@ -57,15 +64,16 @@ class Fetch() extends Module {
 	val stalling = io.execute && io.fetch_request.fetch_op === FetchOp.ST
 	val dequeuing = io.execute && io.fetch_request.fetch_op === FetchOp.DQ
 	val redirecting = io.execute && io.fetch_request.fetch_op === FetchOp.RD
+	val warp_switching = io.execute && io.fetch_request.fetch_op === FetchOp.WS
 
 	val can_issue = io.icache_ready && !fetch_result_valid
 
 	when(io.execute) {
 		when((dequeuing || stalling) && can_issue) {
-			io.icache_req.address := instruction_pointers(io.active_warp)
+			io.icache_req.address := speculative_instruction_pointers(io.active_warp)
 			io.icache_start := true.B
-			request_instruction_pointer := instruction_pointers(io.active_warp)
-			instruction_pointers(io.active_warp) := instruction_pointers(io.active_warp) + 4.U
+			request_instruction_pointer := speculative_instruction_pointers(io.active_warp)
+			speculative_instruction_pointers(io.active_warp) := speculative_instruction_pointers(io.active_warp) + 4.U
 		}
 
 		when(redirecting) {
@@ -73,24 +81,36 @@ class Fetch() extends Module {
 				io.icache_req.address := io.fetch_request.redirect_addr
 				io.icache_start := true.B
 				request_instruction_pointer := io.fetch_request.redirect_addr
-				instruction_pointers(io.active_warp) := io.fetch_request.redirect_addr + 4.U
+				speculative_instruction_pointers(io.active_warp) := io.fetch_request.redirect_addr + 4.U
 			}.otherwise {
-				instruction_pointers(io.active_warp) := io.fetch_request.redirect_addr
+				speculative_instruction_pointers(io.active_warp) := io.fetch_request.redirect_addr
 			}
 
-			ignore_instruction
+			ignore_instruction := request_in_flight && !io.icache_valid
+		}
+
+		when(warp_switching) {
+			for(i <- 0 until 4) {
+				speculative_instruction_pointers(i.U) := instruction_pointers(i.U)
+			}
+
+			ignore_instruction := request_in_flight && !io.icache_valid
 		}
 	}
 
 	when(redirecting) {
 		fetch_result_valid := false.B        
 	}.otherwise {
-		when(io.icache_valid && !ignore_instruction) {
-			fetch_result.pc := request_instruction_pointer
-			fetch_result.inst := io.icache_data
-			fetch_result_valid := true.B
-		}.elsewhen(dequeuing) {
+		when(warp_switching) {
 			fetch_result_valid := false.B
+		}.otherwise {
+			when(io.icache_valid && !ignore_instruction) {
+				fetch_result.pc := request_instruction_pointer
+				fetch_result.inst := io.icache_data
+				fetch_result_valid := true.B
+			}.elsewhen(dequeuing) {
+				fetch_result_valid := false.B
+			}
 		}
 	}
 
