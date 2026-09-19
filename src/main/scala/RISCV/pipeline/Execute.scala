@@ -159,7 +159,7 @@ class Execute() extends Module {
 					io.dcache_wen := true.B
 
 					io.memory_stall := !io.dcache_ready
-					// io.warp_swap := !io.dcache_ready
+					io.warp_swap := !io.dcache_ready
 
 					bundle.rd_wen := false.B
 
@@ -183,7 +183,7 @@ class Execute() extends Module {
 					io.dcache_wen := false.B
 					
 					io.memory_stall := !io.dcache_ready
-					// io.warp_swap := !io.dcache_ready
+					io.warp_swap := !io.dcache_ready
 
 					bundle.rd_wen := false.B
 				}

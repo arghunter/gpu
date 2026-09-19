@@ -22,17 +22,17 @@ class WarpScheduler() extends Module {
 
 	io.warp_swap_flush := false.B
 
-	// when(io.warp_swap) {
-	// 	printf("Swapped warp due to warp swap request! Current Warp: %d\n", active_warp)
+	when(io.warp_swap) {
+		printf("Swapped warp due to warp swap request! Current Warp: %d\n", active_warp)
 
-	// 	io.warp_swap_flush := true.B
-	// 	active_warp := active_warp + 1.U
-	// }
+		io.warp_swap_flush := true.B
+		active_warp := active_warp + 1.U
+	}
 
-	// when(!active_warps(active_warp)) {
-	// 	printf("Swapped warp due inactive warp! Current Warp: %d\n", active_warp)
+	when(!active_warps(active_warp)) {
+		printf("Swapped warp due inactive warp! Current Warp: %d\n", active_warp)
 
-	// 	io.warp_swap_flush := true.B
-	// 	active_warp := active_warp + 1.U
-	// }
+		io.warp_swap_flush := true.B
+		active_warp := active_warp + 1.U
+	}
 }
