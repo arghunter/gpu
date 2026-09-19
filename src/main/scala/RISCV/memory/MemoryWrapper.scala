@@ -34,7 +34,6 @@ class MemoryWrapper(lineWidth: Int = 128, clockFreq: Int = 167000000, baud: Int 
     val write_vga = Output(Bool())
     val write_value_vga = Output(UInt(32.W))
     val switch = Output(Bool())
-    val handshake_bypass = Output(Bool())
 
     val rxd = Input(Bool())
     val txd = Output(Bool())
@@ -123,7 +122,6 @@ class MemoryWrapper(lineWidth: Int = 128, clockFreq: Int = 167000000, baud: Int 
   io.address_vga := io.dcache_req.address - 0x10000000.U
   io.write_vga := is_vga &&  io.dcache_start
   io.write_value_vga := io.dcache_req.write_data(23,20) ## io.dcache_req.write_data(15,12) ## io.dcache_req.write_data(7,4)
-  io.handshake_bypass := is_excep
 
  
 

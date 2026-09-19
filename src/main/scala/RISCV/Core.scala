@@ -22,7 +22,6 @@ class Core() extends Module {
         val dcache_ready = Input(Bool())
         val dcache_valid = Input(Bool())
         val dcache_data = Input(UInt(32.W))
-        val handshake_bypass = Input(Bool())
         val dcache_rd = Output(UInt(5.W))
         val dcache_wen = Output(Bool())
 
@@ -101,7 +100,6 @@ class Core() extends Module {
     execute.io.dcache_ready := io.dcache_ready
     execute.io.dcache_valid := io.dcache_valid
     execute.io.dcache_data := io.dcache_data
-    execute.io.handshake_bypass := io.handshake_bypass
     io.dcache_rd := execute.io.dcache_rd
     io.dcache_wen := execute.io.dcache_wen
 
