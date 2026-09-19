@@ -38,10 +38,8 @@ class Fetch() extends Module {
 	val ignore_instruction = RegInit(false.B)
 	val in_flight = RegInit(false.B)
 
-	val fetch_result_0 = Reg(new FetchResult)
-	val fetch_result_1 = Reg(new FetchResult)
-	val fetch_valid_0 = RegInit(false.B)
-	val fetch_valid_1 = RegInit(false.B)
+	val fetch_result = Reg(new FetchResult)
+	val fetch_result_valid = RegInit(false.B)
 
 	io.icache_req.address := io.active_pc
 	io.icache_req.op := MemOp.LW
@@ -50,20 +48,16 @@ class Fetch() extends Module {
 	io.icache_req.write := false.B
 	io.icache_start := false.B
 
-	io.fetch_result.valid := fetch_valid_0
-	io.fetch_result.bits := fetch_result_0
+	io.fetch_result.valid := fetch_result_valid
+	io.fetch_result.bits := fetch_result
 
 	io.next_pc := io.active_pc
 
-	val redirecting = io.execute && io.fetch_request.fetch_op === FetchOp.RD
+	val stalling = io.execute && io.fetch_request.fetch_op === FetchOp.ST
 	val dequeuing = io.execute && io.fetch_request.fetch_op === FetchOp.DQ
+	val redirecting = io.execute && io.fetch_request.fetch_op === FetchOp.RD
 
-	val pop = dequeuing && fetch_valid_0
-	val push = io.icache_valid && !ignore_instruction && !redirecting
-
-	val pending = fetch_valid_0.asUInt +& fetch_valid_1.asUInt +& in_flight.asUInt
-	val effective_pending = pending - pop.asUInt
-	val can_issue = io.icache_ready && (effective_pending <= 1.U)
+	val can_issue = io.icache_ready && !fetch_result_valid
 
 	def issue(instruction_pointer: UInt): Unit = {
 		io.icache_req.address := instruction_pointer
@@ -73,67 +67,36 @@ class Fetch() extends Module {
 	}
 
 	when(io.execute) {
-		switch(io.fetch_request.fetch_op) {
-			is(FetchOp.DQ) { 
-				when(can_issue) { 
-					issue(io.active_pc)
-				}
-			}
+		when((dequeuing || stalling) && can_issue) {
+			issue(io.active_pc)
+		}
 
-			is(FetchOp.ST) {
-				when(can_issue) {
-					issue(io.active_pc)
-				}
+		when(redirecting) {
+			when(can_issue) {
+				issue(io.fetch_request.redirect_addr)
+			}.otherwise {
+				io.next_pc := io.fetch_request.redirect_addr
 			}
-
-			is(FetchOp.RD) {
-				when(can_issue) {
-					issue(io.fetch_request.redirect_addr)
-				}.otherwise {
-					io.next_pc := io.fetch_request.redirect_addr
-				}
-				
-				ignore_instruction := in_flight && !io.icache_valid
-			}
+			
+			ignore_instruction := in_flight && !io.icache_valid
 		}
 	}
 
-	when(io.icache_valid && ignore_instruction) { ignore_instruction := false.B }
+	when(io.icache_valid && ignore_instruction) {
+		ignore_instruction := false.B
+	}
 
 	when(redirecting) {
-		fetch_valid_0 := false.B        
-		fetch_valid_1 := false.B
+		fetch_result_valid := false.B        
 	}.otherwise {
-		when(pop) {
-			when(push) {
-				when(fetch_valid_1) {
-					fetch_result_0 := fetch_result_1
-					fetch_result_1.pc := request_instruction_pointer
-					fetch_result_1.inst := io.icache_data
-				}.otherwise {
-					fetch_result_0.pc := request_instruction_pointer
-					fetch_result_0.inst := io.icache_data
-					fetch_valid_0 := true.B
-					fetch_valid_1 := false.B
-				}
-			}.otherwise {
-				when(fetch_valid_1) { fetch_result_0 := fetch_result_1; fetch_valid_1 := false.B }
-				.otherwise { fetch_valid_0 := false.B }
-			}
-		}.otherwise {
-			when(push) {
-				when(!fetch_valid_0) {
-					fetch_result_0.pc := request_instruction_pointer
-					fetch_result_0.inst := io.icache_data
-					fetch_valid_0 := true.B
-				}.elsewhen(!fetch_valid_1) {
-					fetch_result_1.pc := request_instruction_pointer
-					fetch_result_1.inst := io.icache_data
-					fetch_valid_1 := true.B
-				}
-			}
+		when(io.icache_valid && !ignore_instruction) {
+			fetch_result.pc   := request_instruction_pointer
+			fetch_result.inst := io.icache_data
+			fetch_result_valid := true.B
+		}.elsewhen(dequeuing) {
+			fetch_result_valid := false.B
 		}
 	}
 
-	in_flight := Mux(io.icache_start, true.B,Mux(io.icache_valid, false.B, in_flight))
+	in_flight := io.icache_start || (!io.icache_valid && in_flight)
 }
