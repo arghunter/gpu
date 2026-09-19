@@ -4,13 +4,14 @@ import _root_.circt.stage.ChiselStage
 import scala.math._
 import chisel3.util._ 
 
-class InstructionBundle extends Bundle {
+class InstructionBundle(cfg: GpuConfig) extends Bundle {
   val rs1 = UInt(5.W)
-  val rs1_val = UInt(32.W)
+  val rs1_val = Vec(cfg.nLanes, UInt(32.W))
   val rs2 = UInt(5.W)
-  val rs2_val = UInt(32.W)
+  val rs2_val = Vec(cfg.nLanes, UInt(32.W))
   val rd = UInt(5.W)
-  val rd_val = UInt(32.W)
+  val rd_val = Vec(cfg.nLanes, UInt(32.W))
+  val mask = UInt(cfg.nLanes.W)
   val rd_wen = Bool()
   val immediate = UInt(32.W)
   val opcode = UInt(7.W)
@@ -19,15 +20,14 @@ class InstructionBundle extends Bundle {
   val pc = UInt(32.W)
 }
 
-class Decode() extends Module {
+class Decode(cfg: GpuConfig) extends Module {
   val io = IO(new Bundle {
     val f2d     = Input(Valid(new F2D))
-    val decoded = Output(Valid(new InstructionBundle()))
+    val decoded = Output(Valid(new InstructionBundle(cfg)))
     val flush   = Input(Bool())
     val stall   = Input(Bool())
 
-    // val register_read_a = Output(UInt(5.W))
-    // val register_read_b = Output(UInt(5.W))
+
   })
 
   val decoder = Module(new Decoder())
@@ -35,8 +35,7 @@ class Decode() extends Module {
 
   val rs1 = RegInit(0.U(5.W))
   val rs2 = RegInit(0.U(5.W))
-  // io.register_read_a := rs1
-  // io.register_read_b := rs2
+
   val rd  = RegInit(0.U(5.W))
   val immediate = RegInit(0.U(32.W))
   val opcode = RegInit(0.U(7.W))
@@ -64,9 +63,10 @@ class Decode() extends Module {
 
   io.decoded.bits.rs1 := rs1
   io.decoded.bits.rs2 := rs2
-  io.decoded.bits.rs1_val := 0.U
-  io.decoded.bits.rs2_val := 0.U
-  io.decoded.bits.rd_val := 0.U
+  io.decoded.bits.rs1_val := VecInit(Seq.fill(cfg.nLanes)(0.U(32.W)))
+  io.decoded.bits.rs2_val := VecInit(Seq.fill(cfg.nLanes)(0.U(32.W)))
+  io.decoded.bits.rd_val := VecInit(Seq.fill(cfg.nLanes)(0.U(32.W)))
+  io.decoded.bits.mask := Fill(cfg.nLanes, 1.U)
   io.decoded.bits.rd_wen := wen
   io.decoded.bits.rd := rd
   io.decoded.bits.immediate := immediate

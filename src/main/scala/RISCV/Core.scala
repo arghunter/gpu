@@ -7,7 +7,7 @@ import chisel3.util._
 import _root_.circt.stage.ChiselStage
 import scala.math._
 
-class Core() extends Module {
+class Core(cfg : GpuConfig) extends Module {
     val io = IO(new Bundle {
         val execute = Input(Bool())
 
@@ -23,9 +23,11 @@ class Core() extends Module {
         val dcache_valid = Input(Bool())
         val dcache_data = Input(UInt(32.W))
         val dcache_rd = Output(UInt(5.W))
+        val dcache_lane = Output(UInt(log2Up(cfg.nLanes).max(1).W))
         val dcache_wen = Output(Bool())
 
         val mem_rd = Input(UInt(5.W))
+        val mem_lane = Input(UInt(log2Up(cfg.nLanes).max(1).W))
         val mem_wen = Input(Bool())
 
         val debug_reg = Output(UInt(32.W))
@@ -36,17 +38,17 @@ class Core() extends Module {
 
     })
 
-    val registers = Module(new Registers())
+    val registers = Module(new Registers(cfg))
     registers.io.read_address_a := 0.U(5.W)
     registers.io.read_address_b := 0.U(5.W)
-    io.debug_reg := registers.io.debug_1
+    io.debug_reg :=0.U //TODO Remove from scaffold
     val fetch = Module(new Fetch())
     io.debug_pc := fetch.io.f2d.bits.pc
 
-    val decode = Module(new Decode())
-    val read = Module(new Read())
-    val execute = Module(new Execute())
-    val writeback = Module(new Writeback())
+    val decode = Module(new Decode(cfg))
+    val read = Module(new Read(cfg))
+    val execute = Module(new Execute(cfg))
+    val writeback = Module(new Writeback(cfg))
 
     val raw_stall = read.io.raw_hazard_stall
     val memory_stall = execute.io.memory_stall
@@ -99,66 +101,71 @@ class Core() extends Module {
     io.dcache_start := execute.io.dcache_start
     execute.io.dcache_ready := io.dcache_ready
     execute.io.dcache_valid := io.dcache_valid
-    execute.io.dcache_data := io.dcache_data
     io.dcache_rd := execute.io.dcache_rd
+    io.dcache_lane := execute.io.dcache_lane
     io.dcache_wen := execute.io.dcache_wen
 
     writeback.io.instruction := execute.io.next_instruction
-    writeback.io.mem_write_data := io.dcache_data
+    writeback.io.mem_write_data := VecInit(Seq.fill(cfg.nLanes)(io.dcache_data))
     writeback.io.mem_rd := io.mem_rd
     writeback.io.mem_wen := io.mem_wen
-    writeback.io.stall := memory_stall
+
+    writeback.io.mem_mask :=  UIntToOH(io.mem_lane,cfg.nLanes)
+    writeback.io.mem_issue := execute.io.mem_issue
+    writeback.io.mem_issue_rd := execute.io.mem_issue_rd
 
     registers.io.write_enable := writeback.io.write_enable
     registers.io.write_address := writeback.io.write_address
     registers.io.in := writeback.io.write_val
 
-    registers.io.write_enable2  := writeback.io.mem_write_enable
+    registers.io.write_enable2 := writeback.io.mem_write_enable
     registers.io.write_address2 := writeback.io.mem_write_address
-    registers.io.in2            := writeback.io.mem_write_val
+    registers.io.in2 := writeback.io.mem_write_val
+    registers.io.write_mask := writeback.io.write_mask
+    registers.io.write_mask2 := writeback.io.mem_write_mask
 
     io.icache_start := fetch.io.icache_start
 
 
-    when(false.B){ // Perf Counters
-        val clockCount = RegInit(0.U(32.W))
-        val instCount  = RegInit(0.U(32.W))
+    // when(false.B){ // Perf Counters
+    //     val clockCount = RegInit(0.U(32.W))
+    //     val instCount  = RegInit(0.U(32.W))
 
-        clockCount := clockCount + 1.U
+    //     clockCount := clockCount + 1.U
 
-        val last_fetched_inst = RegNext(fetch.io.f2d.bits.inst, 0.U)
-        val new_inst_detected = fetch.io.f2d.valid && (fetch.io.f2d.bits.inst =/= last_fetched_inst)
-        when(new_inst_detected) {
-        instCount := instCount + 1.U
-        }
+    //     val last_fetched_inst = RegNext(fetch.io.f2d.bits.inst, 0.U)
+    //     val new_inst_detected = fetch.io.f2d.valid && (fetch.io.f2d.bits.inst =/= last_fetched_inst)
+    //     when(new_inst_detected) {
+    //     instCount := instCount + 1.U
+    //     }
 
-        val mem_stall_cycles = RegInit(0.U(32.W))
-        when(memory_stall) {
-        mem_stall_cycles := mem_stall_cycles + 1.U
-        }
+    //     val mem_stall_cycles = RegInit(0.U(32.W))
+    //     when(memory_stall) {
+    //     mem_stall_cycles := mem_stall_cycles + 1.U
+    //     }
 
-        val raw_stall_cycles = RegInit(0.U(32.W))
-        when(raw_stall) {
-        raw_stall_cycles := raw_stall_cycles + 1.U
-        }
+    //     val raw_stall_cycles = RegInit(0.U(32.W))
+    //     when(raw_stall) {
+    //     raw_stall_cycles := raw_stall_cycles + 1.U
+    //     }
 
-        val flush_count = RegInit(0.U(32.W))
-        when(jump_flush) {
-        flush_count := flush_count + 1.U
-        }
+    //     val flush_count = RegInit(0.U(32.W))
+    //     when(jump_flush) {
+    //     flush_count := flush_count + 1.U
+    //     }
 
-        val LOG_INTERVAL = 1000000
-        val log_counter = RegInit(0.U(log2Up(LOG_INTERVAL).W))
-        val log_fire = log_counter === (LOG_INTERVAL - 1).U
-        log_counter := Mux(log_fire, 0.U, log_counter + 1.U)
+    //     val LOG_INTERVAL = 1000000
+    //     val log_counter = RegInit(0.U(log2Up(LOG_INTERVAL).W))
+    //     val log_fire = log_counter === (LOG_INTERVAL - 1).U
+    //     log_counter := Mux(log_fire, 0.U, log_counter + 1.U)
 
-        when(log_fire) {
-        printf("\n=== PERF @ cycle %d ===\n", clockCount)
-        printf("instructions retired: %d\n", instCount)
-        printf("mem_stall_cycles: %d  raw_stall_cycles: %d  flushes: %d\n",
-            mem_stall_cycles, raw_stall_cycles, flush_count)
-        }
-    }
+    //     when(log_fire) {
+    //     printf("\n=== PERF @ cycle %d ===\n", clockCount)
+    //     printf("instructions retired: %d\n", instCount)
+    //     printf("mem_stall_cycles: %d  raw_stall_cycles: %d  flushes: %d\n",
+    //         mem_stall_cycles, raw_stall_cycles, flush_count)
+    //     }
+    // }
 
 
 when(io.latch_in || io.execute) {
@@ -245,14 +252,14 @@ when(io.latch_in || io.execute) {
 	}
 }
 
-object Core extends App {
-    ChiselStage.emitSystemVerilogFile(
-      new Core(),
-      firtoolOpts = Array(
-        "-disable-all-randomization",
-        "-strip-debug-info",
-        "-default-layer-specialization=enable"
-      ),
-      args = Array("--target-dir", "generated")
-    )
-}
+// object Core extends App {
+//     ChiselStage.emitSystemVerilogFile(
+//       new Core(),
+//       firtoolOpts = Array(
+//         "-disable-all-randomization",
+//         "-strip-debug-info",
+//         "-default-layer-specialization=enable"
+//       ),
+//       args = Array("--target-dir", "generated")
+//     )
+// }

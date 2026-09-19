@@ -5,6 +5,8 @@ import _root_.circt.stage.ChiselStage
 import scala.math._
 import chisel3.util._
 
+case class GpuConfig(nLanes: Int = 1, nWarps: Int = 1, lineWidth: Int = 512)
+
 
 class Main(lineWidth: Int = 512) extends Module {
     val io = IO(new Bundle {
@@ -32,8 +34,9 @@ class Main(lineWidth: Int = 512) extends Module {
 
     })
 
-    val memory = Module(new MemoryWrapper(lineWidth))
-    val core = Module(new Core())
+    val gpucfg = GpuConfig(8,1,512)
+    val memory = Module(new MemoryWrapper(lineWidth, cfg = gpucfg))
+    val core = Module(new Core(gpucfg))
     core.io.latch_in := memory.io.latch_out > 0.U
     io.debug_reg := core.io.debug_reg
     io.debug_pc := core.io.debug_pc
@@ -50,6 +53,7 @@ class Main(lineWidth: Int = 512) extends Module {
     core.io.dcache_valid := memory.io.dcache_valid
     core.io.dcache_data := memory.io.dcache_data
     memory.io.dcache_rd := core.io.dcache_rd
+    memory.io.dcache_lane := core.io.dcache_lane
     memory.io.dcache_wen := core.io.dcache_wen 
 
     core.io.execute := io.execute
@@ -59,6 +63,7 @@ class Main(lineWidth: Int = 512) extends Module {
     memory.io.mem_resp := io.mem_resp
     memory.io.mem_valid := io.mem_valid
     core.io.mem_rd := memory.io.dcache_rd_out
+    core.io.mem_lane := memory.io.dcache_lane_out
     core.io.mem_wen := memory.io.dcache_wen_out
 
     memory.io.rxd := io.rxd

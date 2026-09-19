@@ -7,10 +7,10 @@ object ExecState extends ChiselEnum {
   val IDLE, MEM_WAIT = Value
 }
 
-class Execute() extends Module {
+class Execute(cfg: GpuConfig) extends Module {
   val io = IO(new Bundle {
-    val instruction = Input(Valid(new InstructionBundle()))
-    val next_instruction = Output(Valid(new InstructionBundle()))
+    val instruction = Input(Valid(new InstructionBundle(cfg)))
+    val next_instruction = Output(Valid(new InstructionBundle(cfg)))
     val flush = Input(Bool())
     val stall = Input(Bool())
 
@@ -20,22 +20,29 @@ class Execute() extends Module {
     val dcache_start = Output(Bool())
     val dcache_ready = Input(Bool())
     val dcache_valid = Input(Bool())
-    val dcache_data = Input(UInt(32.W))
     val dcache_rd = Output(UInt(5.W))
+    val dcache_lane = Output(UInt(log2Up(cfg.nLanes).max(1).W))
     val dcache_wen = Output(Bool())
 
     val memory_stall = Output(Bool())
 		val jump_flush = Output(Bool())
+
+    val mem_issue = Output(Bool())
+    val mem_issue_rd = Output(UInt(5.W))
   })
 
-  val alu = Module(new ALU())
-  val malu = Module(new MALU())
+  val alus = Seq.fill(cfg.nLanes)(Module(new ALU()))
+  val malus = Seq.fill(cfg.nLanes)(Module(new MALU()))
+  val malu_ready = malus.map(_.io.ready).reduce(_ && _) //checsks if all ready/all valid
+  val malu_valid = malus.map(_.io.valid).reduce(_ && _)
 
   val state = RegInit(ExecState.IDLE)
-  val bundle = RegInit(0.U.asTypeOf(new InstructionBundle()))
+  val bundle = RegInit(0.U.asTypeOf(new InstructionBundle(cfg)))
   val valid = RegInit(false.B)
-
+  val lane_serializer = RegInit(0.U((log2Up(cfg.nLanes)+1).W))
   // defaults
+  io.mem_issue := false.B
+  io.mem_issue_rd := 0.U
   io.pc_redirect.valid := false.B
   io.pc_redirect.bits := 0.U
   io.dcache_start := false.B
@@ -49,21 +56,23 @@ class Execute() extends Module {
   io.next_instruction.bits := bundle
   io.jump_flush := false.B
   io.dcache_rd := 0.U
+  io.dcache_lane := 0.U
   io.dcache_wen := false.B
 
-  alu.io.func7 := io.instruction.bits.func7
-  // func7 is instruction(31,25), which on an I-type op is really imm[11:5], so the ALU has to
-  // know the format before it trusts a func7 that looks like Zbb.
-  alu.io.isR := io.instruction.bits.opcode === "b0110011".U
-  alu.io.func3 := io.instruction.bits.func3
-  alu.io.a := io.instruction.bits.rs1_val
-  alu.io.b := 0.U
+ 
+  for (i <- 0 until cfg.nLanes) {
+    alus(i).io.func7 := io.instruction.bits.func7
+    alus(i).io.isR := io.instruction.bits.opcode === "b0110011".U
+    alus(i).io.func3 := io.instruction.bits.func3
+    alus(i).io.a := io.instruction.bits.rs1_val(i)
+    alus(i).io.b := 0.U
 
-  malu.io.func7 := io.instruction.bits.func7
-  malu.io.func3 := io.instruction.bits.func3
-  malu.io.a := io.instruction.bits.rs1_val
-  malu.io.b := 0.U
-  malu.io.start := false.B
+    malus(i).io.func7 := io.instruction.bits.func7
+    malus(i).io.func3 := io.instruction.bits.func3
+    malus(i).io.a := io.instruction.bits.rs1_val(i)
+    malus(i).io.b := 0.U
+    malus(i).io.start := false.B
+  }
 
 
 
@@ -79,11 +88,11 @@ class Execute() extends Module {
         val inst = io.instruction.bits
         val pc_plus_4 = inst.pc + 4.U
         val pc_plus_imm = inst.pc + inst.immediate
-        val addr = inst.rs1_val + inst.immediate
+        val addr = inst.rs1_val(0) + inst.immediate
         
         bundle := inst
         bundle.rd_wen := false.B
-        bundle.rd_val := 0.U
+        bundle.rd_val := VecInit(Seq.fill(cfg.nLanes)(0.U(32.W)))
         valid := true.B
   
         switch(inst.opcode) {
@@ -91,25 +100,36 @@ class Execute() extends Module {
 
           // ALU reg-imm / reg-reg
           is("b0010011".U, "b0110011".U) {
-            val neg   = Mux(inst.opcode === "b0110011".U && inst.func7 === "b0100000".U && inst.func3 === "b000".U, -inst.rs2_val, inst.rs2_val)
-            val alu_b = Mux(inst.opcode === "b0010011".U, inst.immediate, neg)
             val isM = inst.opcode === "b0110011".U && inst.func7 === "b0000001".U
-            alu.io.b := alu_b
-            malu.io.b := alu_b
-            malu.io.start := isM && malu.io.ready
-            bundle.rd_val := Mux(isM,malu.io.output,alu.io.output)
+            for (i <- 0 until cfg.nLanes) {
+              val neg   = Mux(inst.opcode === "b0110011".U && inst.func7 === "b0100000".U && inst.func3 === "b000".U, -inst.rs2_val(i), inst.rs2_val(i))
+              val alu_b = Mux(inst.opcode === "b0010011".U, inst.immediate, neg)
+              alus(i).io.b := alu_b
+              malus(i).io.b := alu_b
+              malus(i).io.start := isM && malu_ready
+              bundle.rd_val(i) := Mux(isM, malus(i).io.output, alus(i).io.output)
+            }
             bundle.rd_wen := true.B
-            io.memory_stall :=  isM && !malu.io.valid
+            io.memory_stall :=  isM && !malu_valid
 
+
+          }
+          is("b0001011".U){
+            when(inst.func7 ==="b0000000".U ){
+              for( i <- 0 until cfg.nLanes){
+                bundle.rd_wen := true.B
+                bundle.rd_val(i) := i.U
+              }
+            }
 
           }
 
           // Branch
           is("b1100011".U) {
 
-            val eq = inst.rs1_val === inst.rs2_val
-            val lt_signed = inst.rs1_val.asSInt < inst.rs2_val.asSInt
-            val lt_unsigned = inst.rs1_val < inst.rs2_val
+            val eq = inst.rs1_val(0) === inst.rs2_val(0)
+            val lt_signed = inst.rs1_val(0).asSInt < inst.rs2_val(0).asSInt
+            val lt_unsigned = inst.rs1_val(0) < inst.rs2_val(0)
             val lt_sel = Mux(inst.func3(1), lt_unsigned, lt_signed)
             val lt_eq_sel = Mux(inst.func3(2), lt_sel, eq)
             val take_branch = lt_eq_sel ^ inst.func3(0)
@@ -123,14 +143,14 @@ class Execute() extends Module {
 
           // LUI
           is("b0110111".U) {
-            bundle.rd_val := inst.immediate
+            bundle.rd_val := VecInit(Seq.fill(cfg.nLanes)(inst.immediate))
             bundle.rd_wen := true.B
             
           }
 
           // AUIPC
           is("b0010111".U) {
-            bundle.rd_val := pc_plus_imm
+            bundle.rd_val := VecInit(Seq.fill(cfg.nLanes)(pc_plus_imm))
             bundle.rd_wen := true.B
            
           }
@@ -139,7 +159,7 @@ class Execute() extends Module {
           is("b1101111".U) {
                         // printf("JAL target pc: %d inst pc: %d\n",pc_plus_imm, inst.pc)
 
-            bundle.rd_val := pc_plus_4
+            bundle.rd_val := VecInit(Seq.fill(cfg.nLanes)(pc_plus_4))
             bundle.rd_wen := true.B
             bundle.pc := pc_plus_imm
             io.pc_redirect.valid := true.B
@@ -151,7 +171,7 @@ class Execute() extends Module {
           is("b1100111".U) {
 
             val target = addr & ~1.U(32.W)
-            bundle.rd_val := pc_plus_4
+            bundle.rd_val := VecInit(Seq.fill(cfg.nLanes)(pc_plus_4))
             bundle.rd_wen := true.B
             io.pc_redirect.valid := true.B
             io.pc_redirect.bits  := target
@@ -160,50 +180,18 @@ class Execute() extends Module {
 
           // Load
           is("b0000011".U) {
-            io.dcache_req.address := addr
-            io.dcache_req.read := true.B
-            io.dcache_req.write := false.B
-            io.dcache_req.op := MuxLookup(inst.func3, MemOp.LW)(Seq(
-              "b000".U -> MemOp.LB,
-              "b001".U -> MemOp.LH,
-              "b010".U -> MemOp.LW,
-              "b100".U -> MemOp.LBU,  
-              "b101".U -> MemOp.LHU   
-            ))
-
-            io.dcache_start := io.dcache_ready
-            io.dcache_rd := inst.rd
-            // printf("LOADLOADLOALDOALDOLAODLOLADO RD: %d addr: %d\n\n", inst.rd,addr)
-            io.dcache_wen := true.B
-            io.memory_stall := !io.dcache_ready
-          //   when(inst.rd === 8.U){
-          //   printf("\n\n8 dumps 8 dumped stall: %b\n\n",  !io.dcache_ready)
-          // }
-            
-
-            bundle.rd_wen := false.B
-            valid := io.dcache_ready
+            lane_serializer := 0.U
+            io.memory_stall := true.B
+            state:= ExecState.MEM_WAIT
         
            
           }
 
           // Store
           is("b0100011".U) {
-            io.dcache_req.address := addr
-       
-            io.dcache_req.write_data := inst.rs2_val
-            io.dcache_req.read := false.B
-            io.dcache_req.write := true.B
-            io.dcache_req.op := MuxLookup(inst.func3, MemOp.SW)(Seq(
-              "b000".U -> MemOp.SB,
-              "b001".U -> MemOp.SH,
-              "b010".U -> MemOp.SW
-            ))
-            io.dcache_start := io.dcache_ready
-            io.dcache_rd := 0.U
-            io.dcache_wen := false.B
-            io.memory_stall := !io.dcache_ready
-            bundle.rd_wen := false.B
+            lane_serializer := 0.U
+            io.memory_stall := true.B
+            state:= ExecState.MEM_WAIT
           }
 
           // FENCE — treat as NOP
@@ -213,6 +201,71 @@ class Execute() extends Module {
         }
       }.otherwise {
         valid := false.B
+      }
+    }
+    is(ExecState.MEM_WAIT){
+      io.memory_stall:=true.B
+      val inst = io.instruction.bits
+      when(lane_serializer < cfg.nLanes.U){
+        val addr = inst.rs1_val(lane_serializer) + inst.immediate
+        io.dcache_lane := lane_serializer(log2Up(cfg.nLanes).max(1) - 1, 0)
+        when(io.dcache_ready){
+          when(inst.mask(lane_serializer)){
+            
+            
+            when(inst.opcode === "b0100011".U){//store
+              io.dcache_req.address := addr
+        
+              io.dcache_req.write_data := inst.rs2_val(lane_serializer)
+              io.dcache_req.read := false.B
+              io.dcache_req.write := true.B
+              io.dcache_req.op := MuxLookup(inst.func3, MemOp.SW)(Seq(
+                "b000".U -> MemOp.SB,
+                "b001".U -> MemOp.SH,
+                "b010".U -> MemOp.SW
+              ))
+              io.dcache_start := io.dcache_ready
+              io.dcache_rd := 0.U
+              io.mem_issue_rd := 0.U
+              io.dcache_wen := false.B
+              bundle.rd_wen := false.B
+            }.otherwise{
+              io.dcache_req.address := addr
+              io.dcache_req.read := true.B
+              io.dcache_req.write := false.B
+              io.dcache_req.op := MuxLookup(inst.func3, MemOp.LW)(Seq(
+                "b000".U -> MemOp.LB,
+                "b001".U -> MemOp.LH,
+                "b010".U -> MemOp.LW,
+                "b100".U -> MemOp.LBU,  
+                "b101".U -> MemOp.LHU   
+              ))
+
+              io.dcache_start := io.dcache_ready
+              io.dcache_rd := inst.rd
+              io.mem_issue_rd := inst.rd
+              io.dcache_wen := true.B
+              bundle.rd_wen := false.B
+              io.mem_issue:= true.B
+
+           
+
+            }
+
+          }
+         
+          when(lane_serializer === (cfg.nLanes - 1).U){
+            lane_serializer := 0.U
+            state := ExecState.IDLE
+            valid := true.B
+            io.memory_stall := false.B
+          }.otherwise{
+            lane_serializer := lane_serializer + 1.U
+          }
+        }
+
+
+      
       }
     }
 

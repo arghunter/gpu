@@ -4,14 +4,14 @@ import _root_.circt.stage.ChiselStage
 import scala.math._
 import chisel3.util._ 
 
-class Read() extends Module {
+class Read(cfg: GpuConfig) extends Module {
   val io = IO(new Bundle {
-    val instruction = Input(Valid(new InstructionBundle()))
+    val instruction = Input(Valid(new InstructionBundle(cfg)))
     val register_read_a = Output(UInt(5.W))
     val register_read_b = Output(UInt(5.W))
-    val register_value_a = Input(UInt(32.W))
-    val register_value_b = Input(UInt(32.W))
-    val next_instruction = Output(Valid(new InstructionBundle()))
+    val register_value_a = Input(Vec(cfg.nLanes, UInt(32.W)))
+    val register_value_b = Input(Vec(cfg.nLanes, UInt(32.W)))
+    val next_instruction = Output(Valid(new InstructionBundle(cfg)))
     val flush = Input(Bool())
     val stall = Input(Bool())
     val rum  = Input(UInt(32.W))
@@ -25,7 +25,7 @@ class Read() extends Module {
   io.register_read_a := io.instruction.bits.rs1
   io.register_read_b := io.instruction.bits.rs2
 
-  val bundle = RegInit(0.U.asTypeOf(new InstructionBundle()))
+  val bundle = RegInit(0.U.asTypeOf(new InstructionBundle(cfg)))
   val valid  = RegInit(false.B)
   val bundle_w = WireDefault(bundle)
   when(io.flush) {
@@ -42,8 +42,6 @@ class Read() extends Module {
 
 
   io.next_instruction.bits := bundle_w
-
-
   io.next_instruction.valid := valid
 
   

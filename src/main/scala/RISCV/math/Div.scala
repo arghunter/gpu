@@ -64,18 +64,18 @@ class Div extends Module {
 
             val isOverflow = (io.a === "h80000000".U) && (io.b === "hFFFFFFFF".U)
             overflowCase := isOverflow
-            when(isOverflow || io.b === 0.U) {
-              state := DivState.DONE
-            }
+            // when(isOverflow || io.b === 0.U) {
+            //   state := DivState.DONE
+            // }
           }.otherwise {
             a := io.a
             b := io.b
             divNeg := false.B
             outNeg := false.B
             overflowCase := false.B
-            when(io.b === 0.U) {
-              state := DivState.DONE
-            }
+            // when(io.b === 0.U) {
+            //   state := DivState.DONE
+            // }
           }
         }
       }
