@@ -46,8 +46,8 @@ class Core() extends Module {
     val fetch_stall_prev = RegNext(fetch_stall, true.B)
     val fetch_op = Mux(jump_flush, FetchOp.RD, Mux(fetch_stall, FetchOp.ST, Mux(false.B, FetchOp.ST, FetchOp.DQ))) 
 
-    fetch.io.f_req.fetch_op := fetch_op
-    fetch.io.f_req.redirect_addr := execute.io.pc_redirect.bits
+    fetch.io.fetch_request.fetch_op := fetch_op
+    fetch.io.fetch_request.redirect_addr := execute.io.pc_redirect.bits
     fetch.io.execute := io.execute
 
     fetch.io.icache_ready := io.icache_ready
@@ -58,7 +58,7 @@ class Core() extends Module {
 	io.icache_req := fetch.io.icache_req
     io.icache_start := fetch.io.icache_start
 	
-    decode.io.f2d := fetch.io.f2d
+    decode.io.fetch_result := fetch.io.fetch_result
     decode.io.flush := jump_flush
     decode.io.stall := fetch_stall
 

@@ -11,15 +11,15 @@ class FetchReq extends Bundle {
   val redirect_addr = UInt(32.W)
 }
 
-class F2D extends Bundle {
+class FetchResult extends Bundle {
   val pc = UInt(32.W)
   val inst = UInt(32.W)
 }
 
 class Fetch() extends Module {
   val io = IO(new Bundle {
-    val f_req = Input(new FetchReq)
-    val f2d = Output(Valid(new F2D))
+    val fetch_request = Input(new FetchReq)
+    val fetch_result = Output(Valid(new FetchResult))
     val execute = Input(Bool())
     val icache_req = Output(new MemReq)
     val icache_start = Output(Bool())
@@ -34,8 +34,8 @@ class Fetch() extends Module {
   val in_flight = RegInit(false.B)
 
   
-  val f2d0 = Reg(new F2D)
-  val f2d1 = Reg(new F2D)
+  val f2d0 = Reg(new FetchResult)
+  val f2d1 = Reg(new FetchResult)
   val v0 = RegInit(false.B)
   val v1 = RegInit(false.B)
 
@@ -46,11 +46,11 @@ class Fetch() extends Module {
   io.icache_req.write := false.B
   io.icache_start := false.B
 
-  io.f2d.valid := v0
-  io.f2d.bits := f2d0
+  io.fetch_result.valid := v0
+  io.fetch_result.bits := f2d0
 
-  val redirecting = io.execute && io.f_req.fetch_op === FetchOp.RD
-  val dequeuing = io.execute && io.f_req.fetch_op === FetchOp.DQ
+  val redirecting = io.execute && io.fetch_request.fetch_op === FetchOp.RD
+  val dequeuing = io.execute && io.fetch_request.fetch_op === FetchOp.DQ
   val pop = dequeuing && v0
 
 
@@ -68,14 +68,14 @@ class Fetch() extends Module {
   val in_flight_w = Mux(io.icache_start, true.B,Mux(io.icache_valid, false.B, in_flight))
 
   when(io.execute) {
-    switch(io.f_req.fetch_op) {
+    switch(io.fetch_request.fetch_op) {
       is(FetchOp.DQ) { when(can_issue) { issue(pc) } }
       is(FetchOp.ST) { when(can_issue) { issue(pc) } }
       is(FetchOp.RD) {
         when(can_issue) {
-          issue(io.f_req.redirect_addr)
+          issue(io.fetch_request.redirect_addr)
         }.otherwise {
-          pc := io.f_req.redirect_addr
+          pc := io.fetch_request.redirect_addr
         }
         ignoreInstr := in_flight && !io.icache_valid
       }
