@@ -17,109 +17,114 @@ class FetchResult extends Bundle {
 }
 
 class Fetch() extends Module {
-  val io = IO(new Bundle {
-    val fetch_request = Input(new FetchReq)
-    val fetch_result = Output(Valid(new FetchResult))
-    val execute = Input(Bool())
-    val icache_req = Output(new MemReq)
-    val icache_start = Output(Bool())
-    val icache_ready = Input(Bool())
-    val icache_valid = Input(Bool())
-    val icache_data  = Input(UInt(32.W))
-  })
+	val io = IO(new Bundle {
+		val execute = Input(Bool())
 
-  val pc = RegInit(0.U(32.W))
-  val req_pc = RegInit(0.U(32.W))
-  val ignoreInstr = RegInit(false.B)
-  val in_flight = RegInit(false.B)
+		val active_warp = Input(UInt(4.W))
+		val active_pc = Input(UInt(32.W))
+		val next_pc = Output(UInt(32.W))
 
-  val fetch_result_0 = Reg(new FetchResult)
-  val fetch_result_1 = Reg(new FetchResult)
-  val fetch_valid_0 = RegInit(false.B)
-  val fetch_valid_1 = RegInit(false.B)
+		val fetch_request = Input(new FetchReq)
+		val fetch_result = Output(Valid(new FetchResult))
+		
+		val icache_req = Output(new MemReq)
+		val icache_start = Output(Bool())
+		val icache_ready = Input(Bool())
+		val icache_valid = Input(Bool())
+		val icache_data  = Input(UInt(32.W))
+	})
 
-  io.icache_req.address := pc
-  io.icache_req.op := MemOp.LW
-  io.icache_req.write_data := 0.U
-  io.icache_req.read := true.B
-  io.icache_req.write := false.B
-  io.icache_start := false.B
+	val req_pc = RegInit(0.U(32.W))
+	val ignoreInstr = RegInit(false.B)
+	val in_flight = RegInit(false.B)
 
-  io.fetch_result.valid := fetch_valid_0
-  io.fetch_result.bits := fetch_result_0
+	val fetch_result_0 = Reg(new FetchResult)
+	val fetch_result_1 = Reg(new FetchResult)
+	val fetch_valid_0 = RegInit(false.B)
+	val fetch_valid_1 = RegInit(false.B)
 
-  val redirecting = io.execute && io.fetch_request.fetch_op === FetchOp.RD
-  val dequeuing = io.execute && io.fetch_request.fetch_op === FetchOp.DQ
-  val pop = dequeuing && fetch_valid_0
+	io.icache_req.address := io.active_pc
+	io.icache_req.op := MemOp.LW
+	io.icache_req.write_data := 0.U
+	io.icache_req.read := true.B
+	io.icache_req.write := false.B
+	io.icache_start := false.B
 
-  val pending = fetch_valid_0.asUInt +& fetch_valid_1.asUInt +& in_flight.asUInt
-  val effective_pending = pending - pop.asUInt
-  val can_issue = io.icache_ready && (effective_pending <= 1.U)
+	io.fetch_result.valid := fetch_valid_0
+	io.fetch_result.bits := fetch_result_0
 
-  def issue(addr: UInt): Unit = {
-    io.icache_req.address := addr
-    io.icache_start := true.B
-    req_pc := addr
-    pc:= addr + 4.U
-  }
+	io.next_pc := io.active_pc
 
-  val in_flight_w = Mux(io.icache_start, true.B,Mux(io.icache_valid, false.B, in_flight))
+	val redirecting = io.execute && io.fetch_request.fetch_op === FetchOp.RD
+	val dequeuing = io.execute && io.fetch_request.fetch_op === FetchOp.DQ
+	val pop = dequeuing && fetch_valid_0
 
-  when(io.execute) {
-    switch(io.fetch_request.fetch_op) {
-      is(FetchOp.DQ) { when(can_issue) { issue(pc) } }
-      is(FetchOp.ST) { when(can_issue) { issue(pc) } }
-      is(FetchOp.RD) {
-        when(can_issue) {
-          issue(io.fetch_request.redirect_addr)
-        }.otherwise {
-          pc := io.fetch_request.redirect_addr
-        }
-        ignoreInstr := in_flight && !io.icache_valid
-      }
-    }
-  }
+	val pending = fetch_valid_0.asUInt +& fetch_valid_1.asUInt +& in_flight.asUInt
+	val effective_pending = pending - pop.asUInt
+	val can_issue = io.icache_ready && (effective_pending <= 1.U)
 
-  val push = io.icache_valid && !ignoreInstr && !redirecting
+	def issue(addr: UInt): Unit = {
+		io.icache_req.address := addr
+		io.icache_start := true.B
+		req_pc := addr
+		io.next_pc := addr + 4.U
+	}
 
-  when(io.icache_valid && ignoreInstr) { ignoreInstr := false.B }
+	val in_flight_w = Mux(io.icache_start, true.B,Mux(io.icache_valid, false.B, in_flight))
 
-  when(redirecting) {
-    fetch_valid_0 := false.B        
-    fetch_valid_1 := false.B
-  }.otherwise {
-    when(pop) {
-      when(push) {
-        when(fetch_valid_1) {
-          fetch_result_0 := fetch_result_1
-          fetch_result_1.pc := req_pc
-          fetch_result_1.inst := io.icache_data
-        }.otherwise {
-          fetch_result_0.pc := req_pc
-          fetch_result_0.inst := io.icache_data
-          fetch_valid_0 := true.B
-          fetch_valid_1 := false.B
-        }
-      }.otherwise {
-        when(fetch_valid_1) { fetch_result_0 := fetch_result_1; fetch_valid_1 := false.B }
-         .otherwise { fetch_valid_0 := false.B }
-      }
-    }.otherwise {
-      when(push) {
-        when(!fetch_valid_0) {
-          fetch_result_0.pc := req_pc
-          fetch_result_0.inst := io.icache_data
-          fetch_valid_0 := true.B
-        }.elsewhen(!fetch_valid_1) {
-          fetch_result_1.pc := req_pc
-          fetch_result_1.inst := io.icache_data
-          fetch_valid_1 := true.B
-        }
-      }
-    }
-  }
-  in_flight := in_flight_w
+	when(io.execute) {
+		switch(io.fetch_request.fetch_op) {
+			is(FetchOp.DQ) { when(can_issue) { issue(io.active_pc) } }
+			is(FetchOp.ST) { when(can_issue) { issue(io.active_pc) } }
+			is(FetchOp.RD) {
+				when(can_issue) {
+					issue(io.fetch_request.redirect_addr)
+				}.otherwise {
+					io.next_pc := io.fetch_request.redirect_addr
+				}
+				
+				ignoreInstr := in_flight && !io.icache_valid
+			}
+		}
+	}
+
+	val push = io.icache_valid && !ignoreInstr && !redirecting
+
+	when(io.icache_valid && ignoreInstr) { ignoreInstr := false.B }
+
+	when(redirecting) {
+		fetch_valid_0 := false.B        
+		fetch_valid_1 := false.B
+	}.otherwise {
+		when(pop) {
+			when(push) {
+				when(fetch_valid_1) {
+					fetch_result_0 := fetch_result_1
+					fetch_result_1.pc := req_pc
+					fetch_result_1.inst := io.icache_data
+				}.otherwise {
+					fetch_result_0.pc := req_pc
+					fetch_result_0.inst := io.icache_data
+					fetch_valid_0 := true.B
+					fetch_valid_1 := false.B
+				}
+			}.otherwise {
+				when(fetch_valid_1) { fetch_result_0 := fetch_result_1; fetch_valid_1 := false.B }
+				.otherwise { fetch_valid_0 := false.B }
+			}
+		}.otherwise {
+			when(push) {
+				when(!fetch_valid_0) {
+					fetch_result_0.pc := req_pc
+					fetch_result_0.inst := io.icache_data
+					fetch_valid_0 := true.B
+				}.elsewhen(!fetch_valid_1) {
+					fetch_result_1.pc := req_pc
+					fetch_result_1.inst := io.icache_data
+					fetch_valid_1 := true.B
+				}
+			}
+		}
+	}
+	in_flight := in_flight_w
 }
-
-// Parts of this file were generated from a previous Fetch Module I wrote in Bluespec
-// and didn't want to write from scratch. TBH though, I'm not a big fan and will probably redo it later 

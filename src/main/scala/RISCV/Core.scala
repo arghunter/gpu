@@ -44,12 +44,15 @@ class Core() extends Module {
 
     val fetch_stall = raw_stall || memory_stall || !io.execute
     val fetch_stall_prev = RegNext(fetch_stall, true.B)
-    val fetch_op = Mux(jump_flush, FetchOp.RD, Mux(fetch_stall, FetchOp.ST, Mux(false.B, FetchOp.ST, FetchOp.DQ))) 
+    val fetch_op = Mux(jump_flush, FetchOp.RD, Mux(fetch_stall, FetchOp.ST, Mux(false.B, FetchOp.ST, FetchOp.DQ)))
 
+	warp_scheduler.io.next_pc := fetch.io.next_pc
+
+    fetch.io.execute := io.execute
+    fetch.io.active_warp := warp_scheduler.io.active_warp
+    fetch.io.active_pc := warp_scheduler.io.active_pc
     fetch.io.fetch_request.fetch_op := fetch_op
     fetch.io.fetch_request.redirect_addr := execute.io.pc_redirect.bits
-    fetch.io.execute := io.execute
-
     fetch.io.icache_ready := io.icache_ready
     fetch.io.icache_valid := io.icache_valid
     fetch.io.icache_data := io.icache_data
