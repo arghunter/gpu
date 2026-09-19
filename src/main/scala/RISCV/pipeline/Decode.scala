@@ -5,11 +5,11 @@ import scala.math._
 import chisel3.util._ 
 
 class InstructionBundle extends Bundle {
-  val rs1 = UInt(5.W)
+  val rs1 = UInt(7.W)
   val rs1_val = UInt(32.W)
-  val rs2 = UInt(5.W)
+  val rs2 = UInt(7.W)
   val rs2_val = UInt(32.W)
-  val rd = UInt(5.W)
+  val rd = UInt(7.W)
   val rd_val = UInt(32.W)
   val rd_wen = Bool()
   val immediate = UInt(32.W)
@@ -17,6 +17,7 @@ class InstructionBundle extends Bundle {
   val func3 = UInt(3.W)
   val func7 = UInt(7.W)
   val pc = UInt(32.W)
+  val warp = UInt(2.W)
 }
 
 class Decode() extends Module {
@@ -30,9 +31,9 @@ class Decode() extends Module {
 	val decoder = Module(new Decoder())
 	decoder.io.instruction := io.fetch_result.bits.inst
 
-	val rs1 = RegInit(0.U(5.W))
-	val rs2 = RegInit(0.U(5.W))
-	val rd  = RegInit(0.U(5.W))
+	val rs1 = RegInit(0.U(7.W))
+	val rs2 = RegInit(0.U(7.W))
+	val rd  = RegInit(0.U(7.W))
 	val immediate = RegInit(0.U(32.W))
 	val opcode = RegInit(0.U(7.W))
 	val func3 = RegInit(0.U(3.W))
@@ -40,6 +41,7 @@ class Decode() extends Module {
 	val pc = RegInit(0.U(32.W))
 	val valid = RegInit(false.B)
 	val wen = RegInit(false.B)
+	val warp  = RegInit(0.U(2.W))
 
 	when(io.flush) {
 		valid := false.B
@@ -54,6 +56,7 @@ class Decode() extends Module {
 		pc := io.fetch_result.bits.pc
 		valid := io.fetch_result.valid
 		wen := decoder.io.wen
+		warp := io.fetch_result.bits.warp
 	}
 
   io.decoded.bits.rs1 := rs1
@@ -69,4 +72,5 @@ class Decode() extends Module {
   io.decoded.bits.func7 := func7
   io.decoded.bits.pc := pc
   io.decoded.valid := valid
+  io.decoded.warp := warp
 }
