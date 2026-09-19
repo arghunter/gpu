@@ -20,10 +20,6 @@ class Writeback() extends Module {
     val mem_write_enable    = Output(Bool())
     val mem_write_address   = Output(UInt(5.W))
     val mem_write_val       = Output(UInt(32.W))
-
-	val mark = Output(Bool())
-	val mark_pc = Output(UInt(32.W))
-	val mark_warp = Output(UInt(2.W))
   })
 
   
@@ -39,10 +35,6 @@ class Writeback() extends Module {
   val mem_rum = RegInit(0.U(32.W))
   val mem_rum_w = WireDefault(mem_rum)  
   val mem_rum_w2 =  WireDefault(mem_rum)
-
-	io.mark := io.instruction.valid
-	io.mark_pc := io.instruction.bits.pc
-	io.mark_warp := io.instruction.bits.warp
 
   when(io.instruction.valid || io.mem_write_enable){
     when(io.instruction.valid && io.instruction.bits.opcode === "b0000011".U){

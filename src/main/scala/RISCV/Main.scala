@@ -22,6 +22,8 @@ class Main(lineWidth: Int = 512) extends Module {
 
 		val rxd = Input(Bool())
 		val txd = Output(Bool())
+
+		val trigger = Output(Bool())
     })
 
     val memory = Module(new MemoryWrapper(lineWidth))
@@ -41,7 +43,8 @@ class Main(lineWidth: Int = 512) extends Module {
     memory.io.dcache_wen := core.io.dcache_wen 
 
     core.io.execute := io.execute
-   
+
+	io.trigger := core.io.trigger
 
     io.mem_req       <> memory.io.mem_req
     memory.io.mem_resp := io.mem_resp
@@ -62,10 +65,6 @@ class Main(lineWidth: Int = 512) extends Module {
     io.rgb := vga_controller.io.rgb
     io.blanking := vga_controller.io.blanking
     vga_controller.io.switch := memory.io.switch
-
-
-    
-
     
 
   //   when(!io.execute) {

@@ -26,6 +26,10 @@ class Execute() extends Module {
 		val jump_flush = Output(Bool())
 
 		val warp_swap = Output(Bool())
+
+		val mark = Output(Bool())
+		val mark_pc = Output(UInt(32.W))
+		val mark_warp = Output(UInt(2.W))
 	})
 
 	val alu = Module(new ALU())
@@ -66,6 +70,10 @@ class Execute() extends Module {
 
 	valid := false.B
 
+	io.mark := false.B
+	io.mark_pc := 0.U
+	io.mark_warp := 0.U
+
   	val flush_delay = RegNext(io.jump_flush, false.B)
 	when(state === ExecState.IDLE) {
 		when(io.instruction.valid) {
@@ -78,6 +86,10 @@ class Execute() extends Module {
 			bundle.rd_wen := false.B
 			bundle.rd_val := 0.U
 			valid := true.B
+
+			io.mark := true.B
+			io.mark_warp := inst.warp
+			io.mark_pc := inst.pc + 4.U
 
 			switch(inst.opcode) {
 				// ALU reg-imm / reg-reg
@@ -107,6 +119,8 @@ class Execute() extends Module {
 					io.pc_redirect.bits := target
 					bundle.rd_wen := false.B
 					io.jump_flush := take_branch
+
+					io.mark_pc := Mux(take_branch, target, inst.pc + 4.U)
 				}
 
 				// LUI
@@ -129,6 +143,8 @@ class Execute() extends Module {
 					io.pc_redirect.valid := true.B
 					io.pc_redirect.bits := pc_plus_imm
 					io.jump_flush := true.B
+
+					io.mark_pc := pc_plus_imm
 				}
 
 				// JALR
@@ -139,6 +155,8 @@ class Execute() extends Module {
 					io.pc_redirect.valid := true.B
 					io.pc_redirect.bits  := target
 					io.jump_flush := true.B
+
+					io.mark_pc := target
 				}
 
 				// Load
@@ -164,6 +182,8 @@ class Execute() extends Module {
 					bundle.rd_wen := false.B
 
 					valid := io.dcache_ready
+
+					io.mark := io.dcache_ready
 				}
 
 				// Store
@@ -186,6 +206,8 @@ class Execute() extends Module {
 					io.warp_swap := !io.dcache_ready
 
 					bundle.rd_wen := false.B
+
+					io.mark := io.dcache_ready
 				}
 
 				// FENCE — treat as NOP

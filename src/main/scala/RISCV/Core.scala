@@ -27,6 +27,8 @@ class Core() extends Module {
 
         val mem_rd = Input(UInt(5.W))
         val mem_wen = Input(Bool())
+
+        val trigger = Output(Bool())
     })
 
 	val warp_scheduler = Module(new WarpScheduler())
@@ -50,9 +52,9 @@ class Core() extends Module {
 
     fetch.io.execute := io.execute
     fetch.io.active_warp := warp_scheduler.io.active_warp
-	fetch.io.mark := writeback.io.mark
-	fetch.io.mark_pc := writeback.io.mark_pc
-	fetch.io.mark_warp := writeback.io.mark_warp
+	fetch.io.mark := execute.io.mark
+	fetch.io.mark_pc := execute.io.mark_pc
+	fetch.io.mark_warp := execute.io.mark_warp
     fetch.io.fetch_request.fetch_op := fetch_op
     fetch.io.fetch_request.redirect_addr := execute.io.pc_redirect.bits
     fetch.io.icache_ready := io.icache_ready
@@ -104,6 +106,8 @@ class Core() extends Module {
     registers.io.write_enable2  := writeback.io.mem_write_enable
     registers.io.write_address2 := writeback.io.mem_write_address
     registers.io.in2 := writeback.io.mem_write_val
+
+	io.trigger := false.B
 }
 
 object Core extends App {
