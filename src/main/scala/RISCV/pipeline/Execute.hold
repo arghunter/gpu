@@ -11,6 +11,7 @@ class Execute() extends Module {
 	val io = IO(new Bundle {
 		val instruction = Input(Valid(new InstructionBundle()))
 		val next_instruction = Output(Valid(new InstructionBundle()))
+		val stall = Input(Bool())
 
 		val pc_redirect = Output(Valid(UInt(32.W)))
 
@@ -68,7 +69,10 @@ class Execute() extends Module {
 
   	val flush_delay = RegNext(io.jump_flush, false.B)
 	when(state === ExecState.IDLE) {
-		when(io.instruction.valid) {
+		when(io.stall) {
+			valid := valid
+			bundle := bundle
+		}.elsewhen(io.instruction.valid) {
 			val inst = io.instruction.bits
 			val pc_plus_4 = inst.pc + 4.U
 			val pc_plus_imm = inst.pc + inst.immediate

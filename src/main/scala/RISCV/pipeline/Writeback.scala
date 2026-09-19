@@ -21,9 +21,9 @@ class Writeback() extends Module {
     val mem_write_address   = Output(UInt(5.W))
     val mem_write_val       = Output(UInt(32.W))
 
-    val stall = Input(Bool())
-    
-
+	val mark = Output(Bool())
+	val mark_pc = Output(UInt(32.W))
+	val mark_warp = Output(UInt(2.W))
   })
 
   
@@ -38,12 +38,12 @@ class Writeback() extends Module {
 
   val mem_rum = RegInit(0.U(32.W))
   val mem_rum_w = WireDefault(mem_rum)  
-  val mem_rum_w2 =  WireDefault(mem_rum)  
+  val mem_rum_w2 =  WireDefault(mem_rum)
 
-  
-  when(io.mem_wen){
-    // printf("WRITING MEM: rd: %d   val: %d", io.mem_rd, io.mem_write_data )
-  }
+	io.mark := io.instruction.valid
+	io.mark_pc := io.instruction.bits.pc
+	io.mark_warp := io.instruction.bits.warp
+
   when(io.instruction.valid || io.mem_write_enable){
     when(io.instruction.valid && io.instruction.bits.opcode === "b0000011".U){
       mem_rum_w := mem_rum | (1.U(32.W) << io.instruction.bits.rd)
@@ -55,11 +55,4 @@ class Writeback() extends Module {
   }
   mem_rum := mem_rum_w2
   io.reg_mem_rum := mem_rum
-
-// when(io.mem_rd === 8.U){
-//   printf("\n\n8 recieved 8 recieved\n\n")
-// }
-
-//check if its the current oSne in the stage if it is replace, otherwise pipe through
-
 }

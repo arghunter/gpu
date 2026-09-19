@@ -40,13 +40,19 @@ class Core() extends Module {
     val raw_stall = read.io.raw_hazard_stall
     val memory_stall = execute.io.memory_stall
     val jump_flush = execute.io.jump_flush
+    val warp_swap_flush = warp_scheduler.io.warp_swap_flush
 
     val fetch_stall = raw_stall || memory_stall || !io.execute
     val fetch_stall_prev = RegNext(fetch_stall, true.B)
-    val fetch_op = Mux(jump_flush, FetchOp.RD, Mux(fetch_stall, FetchOp.ST, Mux(false.B, FetchOp.ST, FetchOp.DQ)))
+    val fetch_op = Mux(warp_swap_flush, FetchOp.WS, Mux(jump_flush, FetchOp.RD, Mux(fetch_stall, FetchOp.ST, Mux(false.B, FetchOp.ST, FetchOp.DQ))))
+
+	warp_scheduler.io.warp_swap := execute.io.warp_swap
 
     fetch.io.execute := io.execute
     fetch.io.active_warp := warp_scheduler.io.active_warp
+	fetch.io.mark := writeback.io.mark
+	fetch.io.mark_pc := writeback.io.mark_pc
+	fetch.io.mark_warp := writeback.io.mark_warp
     fetch.io.fetch_request.fetch_op := fetch_op
     fetch.io.fetch_request.redirect_addr := execute.io.pc_redirect.bits
     fetch.io.icache_ready := io.icache_ready
@@ -58,8 +64,9 @@ class Core() extends Module {
     io.icache_start := fetch.io.icache_start
 	
     decode.io.fetch_result := fetch.io.fetch_result
-    decode.io.flush := jump_flush
+    decode.io.flush := jump_flush || warp_swap_flush
     decode.io.stall := fetch_stall
+	decode.io.active_warp := warp_scheduler.io.active_warp
 
 	val register_use_map = (execute.io.next_instruction.valid.asUInt << execute.io.next_instruction.bits.rd) |
           (read.io.next_instruction.valid.asUInt << read.io.next_instruction.bits.rd) |
@@ -69,13 +76,11 @@ class Core() extends Module {
     read.io.instruction := decode.io.decoded
     read.io.register_value_a := registers.io.out_a
     read.io.register_value_b := registers.io.out_b
-    read.io.flush := jump_flush
+    read.io.flush := jump_flush || warp_swap_flush
     read.io.stall := memory_stall
     read.io.rum := register_use_map
 
     execute.io.instruction := read.io.next_instruction
-    execute.io.flush := RegNext(jump_flush)
-    execute.io.stall := false.B
 
     execute.io.dcache_ready := io.dcache_ready
     execute.io.dcache_valid := io.dcache_valid
@@ -90,7 +95,6 @@ class Core() extends Module {
     writeback.io.mem_write_data := io.dcache_data
     writeback.io.mem_rd := io.mem_rd
     writeback.io.mem_wen := io.mem_wen
-    writeback.io.stall := memory_stall
 
 	registers.io.read_address_a := read.io.register_read_a
     registers.io.read_address_b := read.io.register_read_b
