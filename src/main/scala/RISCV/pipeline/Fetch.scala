@@ -33,11 +33,10 @@ class Fetch() extends Module {
   val ignoreInstr = RegInit(false.B)
   val in_flight = RegInit(false.B)
 
-  
-  val f2d0 = Reg(new FetchResult)
-  val f2d1 = Reg(new FetchResult)
-  val v0 = RegInit(false.B)
-  val v1 = RegInit(false.B)
+  val fetch_result_0 = Reg(new FetchResult)
+  val fetch_result_1 = Reg(new FetchResult)
+  val fetch_valid_0 = RegInit(false.B)
+  val fetch_valid_1 = RegInit(false.B)
 
   io.icache_req.address := pc
   io.icache_req.op := MemOp.LW
@@ -46,15 +45,14 @@ class Fetch() extends Module {
   io.icache_req.write := false.B
   io.icache_start := false.B
 
-  io.fetch_result.valid := v0
-  io.fetch_result.bits := f2d0
+  io.fetch_result.valid := fetch_valid_0
+  io.fetch_result.bits := fetch_result_0
 
   val redirecting = io.execute && io.fetch_request.fetch_op === FetchOp.RD
   val dequeuing = io.execute && io.fetch_request.fetch_op === FetchOp.DQ
-  val pop = dequeuing && v0
+  val pop = dequeuing && fetch_valid_0
 
-
-  val pending= v0.asUInt +& v1.asUInt +& in_flight.asUInt
+  val pending = fetch_valid_0.asUInt +& fetch_valid_1.asUInt +& in_flight.asUInt
   val effective_pending = pending - pop.asUInt
   val can_issue = io.icache_ready && (effective_pending <= 1.U)
 
@@ -87,35 +85,35 @@ class Fetch() extends Module {
   when(io.icache_valid && ignoreInstr) { ignoreInstr := false.B }
 
   when(redirecting) {
-    v0 := false.B        
-    v1 := false.B
+    fetch_valid_0 := false.B        
+    fetch_valid_1 := false.B
   }.otherwise {
     when(pop) {
       when(push) {
-        when(v1) {
-          f2d0 := f2d1
-          f2d1.pc := req_pc
-          f2d1.inst := io.icache_data
+        when(fetch_valid_1) {
+          fetch_result_0 := fetch_result_1
+          fetch_result_1.pc := req_pc
+          fetch_result_1.inst := io.icache_data
         }.otherwise {
-          f2d0.pc := req_pc
-          f2d0.inst := io.icache_data
-          v0 := true.B
-          v1 := false.B
+          fetch_result_0.pc := req_pc
+          fetch_result_0.inst := io.icache_data
+          fetch_valid_0 := true.B
+          fetch_valid_1 := false.B
         }
       }.otherwise {
-        when(v1) { f2d0 := f2d1; v1 := false.B }
-         .otherwise { v0 := false.B }
+        when(fetch_valid_1) { fetch_result_0 := fetch_result_1; fetch_valid_1 := false.B }
+         .otherwise { fetch_valid_0 := false.B }
       }
     }.otherwise {
       when(push) {
-        when(!v0) {
-          f2d0.pc := req_pc
-          f2d0.inst := io.icache_data
-          v0 := true.B
-        }.elsewhen(!v1) {
-          f2d1.pc := req_pc
-          f2d1.inst := io.icache_data
-          v1 := true.B
+        when(!fetch_valid_0) {
+          fetch_result_0.pc := req_pc
+          fetch_result_0.inst := io.icache_data
+          fetch_valid_0 := true.B
+        }.elsewhen(!fetch_valid_1) {
+          fetch_result_1.pc := req_pc
+          fetch_result_1.inst := io.icache_data
+          fetch_valid_1 := true.B
         }
       }
     }
