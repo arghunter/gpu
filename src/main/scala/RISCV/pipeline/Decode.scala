@@ -17,7 +17,6 @@ class InstructionBundle extends Bundle {
   val func3 = UInt(3.W)
   val func7 = UInt(7.W)
   val pc = UInt(32.W)
-  val warp = UInt(2.W)
 }
 
 class Decode() extends Module {
@@ -41,7 +40,6 @@ class Decode() extends Module {
 	val pc = RegInit(0.U(32.W))
 	val valid = RegInit(false.B)
 	val wen = RegInit(false.B)
-	val warp  = RegInit(0.U(2.W))
 
 	when(io.flush) {
 		valid := false.B
@@ -56,7 +54,6 @@ class Decode() extends Module {
 		pc := io.fetch_result.bits.pc
 		valid := io.fetch_result.valid
 		wen := decoder.io.wen
-		warp := io.fetch_result.bits.warp
 	}
 
   io.decoded.bits.rs1 := rs1
@@ -72,5 +69,4 @@ class Decode() extends Module {
   io.decoded.bits.func7 := func7
   io.decoded.bits.pc := pc
   io.decoded.valid := valid
-  io.decoded.warp := warp
 }

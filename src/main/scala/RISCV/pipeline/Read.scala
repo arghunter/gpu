@@ -20,7 +20,7 @@ class Read() extends Module {
 
 	val raw_hazard = io.instruction.valid && (
 		(io.rum(io.instruction.bits.rs1) && io.instruction.bits.rs1 =/= 0.U) ||
-		(io.rum(io.instruction.bits.rs2 && io.instruction.bits.rs2 =/= 0.U) ||
+		(io.rum(io.instruction.bits.rs2) && io.instruction.bits.rs2 =/= 0.U) ||
 		(io.instruction.bits.rd_wen && io.rum(io.instruction.bits.rd) && io.instruction.bits.rd =/= 0.U)
 	)
 

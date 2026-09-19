@@ -36,10 +36,9 @@ class Fetch() extends Module {
 	// RegInit(VecInit(Seq.fill(4.toInt)(0.U(32.W))))
 
 	val instruction_pointers = RegInit(VecInit(Seq.fill(4.toInt)(0.U(32.W))))
-	val ignore_instructions = RegInit(VecInit(Seq.fill(4.toInt)(false.B)))
 	
+	val ignore_instruction = RegInit(false.B)
 	val request_instruction_pointer = RegInit(0.U(32.W))
-	val request_warp = RegInit(0.U(2.W))
 	val request_in_flight = RegInit(false.B)
 
 	val fetch_result = Reg(new FetchResult)
@@ -66,7 +65,6 @@ class Fetch() extends Module {
 			io.icache_req.address := instruction_pointers(io.active_warp)
 			io.icache_start := true.B
 			request_instruction_pointer := instruction_pointers(io.active_warp)
-			request_warp := io.active_warp
 			instruction_pointers(io.active_warp) := instruction_pointers(io.active_warp) + 4.U
 		}
 
@@ -75,24 +73,20 @@ class Fetch() extends Module {
 				io.icache_req.address := io.fetch_request.redirect_addr
 				io.icache_start := true.B
 				request_instruction_pointer := io.fetch_request.redirect_addr
-				request_warp := io.active_warp
 				instruction_pointers(io.active_warp) := io.fetch_request.redirect_addr + 4.U
 			}.otherwise {
 				instruction_pointers(io.active_warp) := io.fetch_request.redirect_addr
 			}
 
-			when(io.active_warp === request_warp) {
-				ignore_instructions(io.active_warp) := request_in_flight && !io.icache_valid
-			}
+			ignore_instruction
 		}
 	}
 
 	when(redirecting) {
 		fetch_result_valid := false.B        
 	}.otherwise {
-		when(io.icache_valid && !ignore_instructions(request_warp)) {
+		when(io.icache_valid && !ignore_instruction) {
 			fetch_result.pc := request_instruction_pointer
-			fetch_result.warp := request_warp
 			fetch_result.inst := io.icache_data
 			fetch_result_valid := true.B
 		}.elsewhen(dequeuing) {
@@ -100,8 +94,8 @@ class Fetch() extends Module {
 		}
 	}
 
-	when(io.icache_valid && ignore_instructions(request_warp)) {
-		ignore_instructions(request_warp) := false.B
+	when(io.icache_valid && ignore_instruction) {
+		ignore_instruction := false.B
 	}
 
 	request_in_flight := io.icache_start || (!io.icache_valid && request_in_flight)
