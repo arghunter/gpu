@@ -10,39 +10,27 @@ class Main(lineWidth: Int = 512) extends Module {
     val io = IO(new Bundle {
 		val execute = Input(Bool())
 
+		val vga_clk = Input(Clock());
+		val hsync = Output(Bool())
+		val vsync = Output(Bool())
+		val rgb = Output(UInt(24.W))
+		val blanking = Output(Bool())
 
-    val vga_clk = Input(Clock());
-    val hsync = Output(Bool())
-    val vsync = Output(Bool())
-    val rgb = Output(UInt(24.W))
-    val blanking = Output(Bool())
+		val mem_req   = Decoupled(new MemLineReq(lineWidth))   
+		val mem_resp  = Input(UInt(lineWidth.W))
+		val mem_valid = Input(Bool()) 
 
-    val mem_req   = Decoupled(new MemLineReq(lineWidth))   
-    val mem_resp  = Input(UInt(lineWidth.W))
-    val mem_valid = Input(Bool()) 
-
-    val debug_reg = Output(UInt(32.W))
-    val debug_pc = Output(UInt(32.W))
-
-    val rxd = Input(Bool())
-    val txd = Output(Bool())
-
-    val mem_stall = Output(Bool())
-
-
+		val rxd = Input(Bool())
+		val txd = Output(Bool())
     })
 
     val memory = Module(new MemoryWrapper(lineWidth))
     val core = Module(new Core())
-    core.io.latch_in := memory.io.latch_out > 0.U
-    io.debug_reg := core.io.debug_reg
-    io.debug_pc := core.io.debug_pc
     memory.io.icache_req := core.io.icache_req
     memory.io.icache_start := core.io.icache_start
     core.io.icache_ready := memory.io.icache_ready
     core.io.icache_valid := memory.io.icache_valid
     core.io.icache_data := memory.io.icache_data
-    io.mem_stall := core.io.mem_stall
 
     memory.io.dcache_req := core.io.dcache_req
     memory.io.dcache_start := core.io.dcache_start

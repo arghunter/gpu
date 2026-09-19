@@ -28,21 +28,12 @@ class Core() extends Module {
 
         val mem_rd = Input(UInt(5.W))
         val mem_wen = Input(Bool())
-
-        val debug_reg = Output(UInt(32.W))
-        val debug_pc = Output(UInt(32.W))
-
-        val latch_in = Input(Bool())
-        val mem_stall = Output(Bool())
-
     })
 
     val registers = Module(new Registers())
     registers.io.read_address_a := 0.U(5.W)
     registers.io.read_address_b := 0.U(5.W)
-    io.debug_reg := registers.io.debug_1
     val fetch = Module(new Fetch())
-    io.debug_pc := fetch.io.f2d.bits.pc
 
     val decode = Module(new Decode())
     val read = Module(new Read())
@@ -52,8 +43,6 @@ class Core() extends Module {
     val raw_stall = read.io.raw_hazard_stall
     val memory_stall = execute.io.memory_stall
     val jump_flush = execute.io.jump_flush
-
-    io.mem_stall := memory_stall
 
     val fetch_stall = raw_stall || memory_stall || !io.execute
     val fetch_stall_prev = RegNext(fetch_stall, true.B)
@@ -163,7 +152,7 @@ class Core() extends Module {
     }
 
 
-when(io.latch_in || io.execute) {
+when(io.execute) {
 // printf("=== Fetch ===\n")
 // printf("fetch op %d\n",fetch_op.asUInt)
 // printf("f2d valid: %b\n",  fetch.io.f2d.valid)

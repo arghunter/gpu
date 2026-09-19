@@ -427,3 +427,5 @@ xvlog.*
 *.dcp
 
 xpack-riscv-none-elf-gcc-15.2.0-1
+
+vscode/
