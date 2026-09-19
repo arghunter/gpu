@@ -13,6 +13,7 @@ class FetchReq extends Bundle {
 
 class FetchResult extends Bundle {
   val pc = UInt(32.W)
+  val warp = UInt(2.W)
   val inst = UInt(32.W)
 }
 
@@ -90,7 +91,8 @@ class Fetch() extends Module {
 		fetch_result_valid := false.B        
 	}.otherwise {
 		when(io.icache_valid && !ignore_instructions(request_warp)) {
-			fetch_result.pc   := request_instruction_pointer
+			fetch_result.pc := request_instruction_pointer
+			fetch_result.warp := request_warp
 			fetch_result.inst := io.icache_data
 			fetch_result_valid := true.B
 		}.elsewhen(dequeuing) {

@@ -22,11 +22,11 @@ class Registers() extends Module {
     io.out_a := regs(io.read_address_a)
     io.out_b := regs(io.read_address_b)
 
-    when (io.write_enable && (io.write_address =/= 0.U)) {
+    when (io.write_enable && (io.write_address =/= 0.U) && (io.write_address =/= 32.U) && (io.write_address =/= 64.U) && (io.write_address =/= 96.U)) {
         regs(io.write_address) := io.in
     }
 
-    when (io.write_enable2 && (io.write_address2 =/= 0.U) && !(io.write_enable && io.write_address === io.write_address2)) {
+    when (io.write_enable2 && (io.write_address2 =/= 0.U) && (io.write_address2 =/= 32.U) && (io.write_address2 =/= 64.U) && (io.write_address2 =/= 96.U) && !(io.write_enable && io.write_address === io.write_address2)) {
         regs(io.write_address2) := io.in2
     }
 }

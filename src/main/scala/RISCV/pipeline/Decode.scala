@@ -44,9 +44,9 @@ class Decode() extends Module {
 	when(io.flush) {
 		valid := false.B
 	}.elsewhen(!io.stall) {
-		rs1 := decoder.io.rs1
-		rs2 := decoder.io.rs2
-		rd := decoder.io.rd
+		rs1 := decoder.io.rs1 + (io.fetch_result.bits.warp << 5)
+		rs2 := decoder.io.rs2 + (io.fetch_result.bits.warp << 5)
+		rd := decoder.io.rd + (io.fetch_result.bits.warp << 5)
 		immediate := decoder.io.immediate
 		opcode := decoder.io.opcode
 		func3 := decoder.io.func3
@@ -69,13 +69,4 @@ class Decode() extends Module {
   io.decoded.bits.func7 := func7
   io.decoded.bits.pc := pc
   io.decoded.valid := valid
-  // printf("DECODE: stall=%b flush=%b f2d_valid=%b f2d_pc=%x | out_valid=%b out_pc=%x out_opcode=%b rd = %d inst = %x\n",
-  // io.stall,
-  // io.flush,
-  // io.f2d.valid,
-  // io.f2d.bits.pc,
-  // io.decoded.valid,
-  // io.decoded.bits.pc,
-  // io.decoded.bits.opcode,
-  // io.decoded.bits.rd, RegNext( io.f2d.bits.inst))
 }
