@@ -34,8 +34,8 @@ class Fetch() extends Module {
 		val icache_data  = Input(UInt(32.W))
 	})
 
-	val req_pc = RegInit(0.U(32.W))
-	val ignoreInstr = RegInit(false.B)
+	val request_instruction_pointer = RegInit(0.U(32.W))
+	val ignore_instruction = RegInit(false.B)
 	val in_flight = RegInit(false.B)
 
 	val fetch_result_0 = Reg(new FetchResult)
@@ -57,25 +57,35 @@ class Fetch() extends Module {
 
 	val redirecting = io.execute && io.fetch_request.fetch_op === FetchOp.RD
 	val dequeuing = io.execute && io.fetch_request.fetch_op === FetchOp.DQ
+
 	val pop = dequeuing && fetch_valid_0
+	val push = io.icache_valid && !ignore_instruction && !redirecting
 
 	val pending = fetch_valid_0.asUInt +& fetch_valid_1.asUInt +& in_flight.asUInt
 	val effective_pending = pending - pop.asUInt
 	val can_issue = io.icache_ready && (effective_pending <= 1.U)
 
-	def issue(addr: UInt): Unit = {
-		io.icache_req.address := addr
+	def issue(instruction_pointer: UInt): Unit = {
+		io.icache_req.address := instruction_pointer
 		io.icache_start := true.B
-		req_pc := addr
-		io.next_pc := addr + 4.U
+		request_instruction_pointer := instruction_pointer
+		io.next_pc := instruction_pointer + 4.U
 	}
-
-	val in_flight_w = Mux(io.icache_start, true.B,Mux(io.icache_valid, false.B, in_flight))
 
 	when(io.execute) {
 		switch(io.fetch_request.fetch_op) {
-			is(FetchOp.DQ) { when(can_issue) { issue(io.active_pc) } }
-			is(FetchOp.ST) { when(can_issue) { issue(io.active_pc) } }
+			is(FetchOp.DQ) { 
+				when(can_issue) { 
+					issue(io.active_pc)
+				}
+			}
+
+			is(FetchOp.ST) {
+				when(can_issue) {
+					issue(io.active_pc)
+				}
+			}
+
 			is(FetchOp.RD) {
 				when(can_issue) {
 					issue(io.fetch_request.redirect_addr)
@@ -83,14 +93,12 @@ class Fetch() extends Module {
 					io.next_pc := io.fetch_request.redirect_addr
 				}
 				
-				ignoreInstr := in_flight && !io.icache_valid
+				ignore_instruction := in_flight && !io.icache_valid
 			}
 		}
 	}
 
-	val push = io.icache_valid && !ignoreInstr && !redirecting
-
-	when(io.icache_valid && ignoreInstr) { ignoreInstr := false.B }
+	when(io.icache_valid && ignore_instruction) { ignore_instruction := false.B }
 
 	when(redirecting) {
 		fetch_valid_0 := false.B        
@@ -100,10 +108,10 @@ class Fetch() extends Module {
 			when(push) {
 				when(fetch_valid_1) {
 					fetch_result_0 := fetch_result_1
-					fetch_result_1.pc := req_pc
+					fetch_result_1.pc := request_instruction_pointer
 					fetch_result_1.inst := io.icache_data
 				}.otherwise {
-					fetch_result_0.pc := req_pc
+					fetch_result_0.pc := request_instruction_pointer
 					fetch_result_0.inst := io.icache_data
 					fetch_valid_0 := true.B
 					fetch_valid_1 := false.B
@@ -115,16 +123,17 @@ class Fetch() extends Module {
 		}.otherwise {
 			when(push) {
 				when(!fetch_valid_0) {
-					fetch_result_0.pc := req_pc
+					fetch_result_0.pc := request_instruction_pointer
 					fetch_result_0.inst := io.icache_data
 					fetch_valid_0 := true.B
 				}.elsewhen(!fetch_valid_1) {
-					fetch_result_1.pc := req_pc
+					fetch_result_1.pc := request_instruction_pointer
 					fetch_result_1.inst := io.icache_data
 					fetch_valid_1 := true.B
 				}
 			}
 		}
 	}
-	in_flight := in_flight_w
+
+	in_flight := Mux(io.icache_start, true.B,Mux(io.icache_valid, false.B, in_flight))
 }
