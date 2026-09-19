@@ -218,7 +218,6 @@ when(io.latch_in || io.execute) {
 // printf("pc_redir:  %b -> %d\n", execute.io.pc_redirect.valid, execute.io.pc_redirect.bits)
 // printf("jmp_flush: %b\n", execute.io.jump_flush)
 // printf("mem_stall: %b\n", execute.io.memory_stall)
-// printf("handshake_bypass: %b\n", execute.io.handshake_bypass)
 
 // printf("=== Writeback ===\n")
 // printf("valid:%b\n", writeback.io.instruction.valid)
