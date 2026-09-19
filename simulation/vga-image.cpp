@@ -417,7 +417,7 @@ int main(int argc, char** argv) {
     dut->reset = 0;
 
 	dut->io_allocate_warps = 1;
-    dut->io_warp_count = 1;
+    dut->io_warp_count = 2;
 
 	for (int i = 0; i < 2; i++) {
         dut->clock ^= 1;

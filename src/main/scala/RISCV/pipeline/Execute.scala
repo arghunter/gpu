@@ -30,6 +30,8 @@ class Execute() extends Module {
 		val mark = Output(Bool())
 		val mark_pc = Output(UInt(32.W))
 		val mark_warp = Output(UInt(2.W))
+
+		val active_warp = Input(UInt(2.W))
 	})
 
 	val alu = Module(new ALU())
@@ -213,6 +215,12 @@ class Execute() extends Module {
 				// FENCE — treat as NOP
 				is("b0001111".U) {
 					bundle.rd_wen := false.B
+				}
+
+				// Lane Instructions
+				is("b00001011".U) {
+					bundle.rd_val := io.active_warp
+					bundle.rd_wen := true.B
 				}
 			}
 		}

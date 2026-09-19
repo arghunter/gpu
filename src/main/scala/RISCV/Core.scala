@@ -94,6 +94,7 @@ class Core() extends Module {
     execute.io.dcache_ready := io.dcache_ready
     execute.io.dcache_valid := io.dcache_valid
     execute.io.dcache_data := io.dcache_data
+	execute.io.active_warp := warp_scheduler.io.active_warp
 
     io.dcache_rd := execute.io.dcache_rd
     io.dcache_wen := execute.io.dcache_wen

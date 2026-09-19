@@ -46,6 +46,7 @@ class Decoder() extends Module {
         is(0b1101111.U) { format := InstructionFormat.J; } // jal
         is(0b1100111.U) { format := InstructionFormat.I; } // jalr
         is(0b1100011.U) { format := InstructionFormat.B; } // beq, bne, blt, bge, bltu, bgeu
+		is(0b0001011.U) { format := InstructionFormat.S;} // This is the cusotm instructions for getting  lane handleing
     }
 
 
