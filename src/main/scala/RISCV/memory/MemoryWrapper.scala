@@ -47,7 +47,9 @@ class MemoryWrapper(lineWidth: Int = 128, clockFreq: Int = 167000000, baud: Int 
   val hardwareTimer = Module(new HardwareTimer(clockFreq))
   val keyTracker = Module(new UartKeyboardTracker(clockFreq, baud))
   val uartTx = Module(new UartTxFifo(clockFreq, baud)) 
-  val last_bypass = RegInit(false.B)
+  val bypass_pending = RegInit(false.B)
+  val bypass_rd  = RegInit(0.U(5.W))
+  val bypass_wen = RegInit(false.B)
   val bypass_val = RegInit(0.U(32.W))
   
   io.txd := uartTx.io.out
@@ -70,7 +72,6 @@ class MemoryWrapper(lineWidth: Int = 128, clockFreq: Int = 167000000, baud: Int 
   val is_debug_num = io.dcache_req.address === 0x70000008.U
   val is_switch = io.dcache_req.address === 0x9000000.U
   val is_excep = is_vga || is_htimer || is_keytracker || is_uarttx || is_debug_char || is_debug_num || is_switch
-  last_bypass := is_excep
   when(is_vga &&  io.dcache_start){
     // printf("is vga bypassing\n\n\n\n")
   }
@@ -93,25 +94,12 @@ class MemoryWrapper(lineWidth: Int = 128, clockFreq: Int = 167000000, baud: Int 
 
   mem.io.dcache_req := io.dcache_req
   mem.io.dcache_start := io.dcache_start && !is_excep
-  io.dcache_ready := mem.io.dcache_ready
-  // io.dcache_valid := mem.io.dcache_valid || last_bypass
+  io.dcache_ready := mem.io.dcache_ready && !bypass_pending
   io.dcache_data := mem.io.dcache_data
   mem.io.dcache_rd := io.dcache_rd
   mem.io.dcache_wen := io.dcache_wen
   io.dcache_rd_out := mem.io.dcache_rd_out
   io.dcache_wen_out := mem.io.dcache_wen_out
-
-  val dcache_bypass = io.dcache_start && is_excep
-  val bypass_valid  = RegNext(dcache_bypass, false.B)
-  val bypass_rd     = RegNext(io.dcache_rd)
-  val bypass_wen    = RegNext(io.dcache_wen)
-
-  io.dcache_valid := mem.io.dcache_valid || bypass_valid
-  when(bypass_valid) {
-    io.dcache_data := bypass_val
-    io.dcache_rd_out := bypass_rd
-    io.dcache_wen_out := bypass_wen
-  }
 
   val keytracker_word = (io.dcache_req.address - KEYTRACKER_BASE)(5, 2)
 
@@ -139,10 +127,24 @@ class MemoryWrapper(lineWidth: Int = 128, clockFreq: Int = 167000000, baud: Int 
 
  
 
-  when(is_htimer) {
-    bypass_val := hardwareTimer.io.micros
-  }.elsewhen(is_keytracker) {
-    bypass_val := keytracker_rdata
+  val dcache_bypass = io.dcache_start && is_excep && io.dcache_wen
+  val bypass_fire = bypass_pending && !mem.io.dcache_valid
+
+  when(dcache_bypass) {
+    bypass_pending := true.B
+    bypass_rd  := io.dcache_rd
+    bypass_wen := io.dcache_wen
+    bypass_val := Mux(is_htimer, hardwareTimer.io.micros,
+                  Mux(is_keytracker, keytracker_rdata, 0.U))
+  }.elsewhen(bypass_fire) {
+    bypass_pending := false.B
+  }
+
+  io.dcache_valid := mem.io.dcache_valid || bypass_fire
+  when(bypass_fire) {
+    io.dcache_data := bypass_val
+    io.dcache_rd_out := bypass_rd
+    io.dcache_wen_out := bypass_wen
   }
 
 

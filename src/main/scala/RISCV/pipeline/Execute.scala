@@ -208,17 +208,8 @@ class Execute() extends Module {
           // }
             
 
-            when(!io.handshake_bypass){
-              // state := ExecState.MEM_WAIT
-              bundle.rd_wen := false.B  
-              valid := io.dcache_ready
-            }.otherwise{
-              valid := true.B
-              bundle.hbp := true.B
-              bundle.rd_val := io.dcache_data
-              io.memory_stall := false.B        
-              bundle.rd_wen := true.B     
-            }
+            bundle.rd_wen := false.B
+            valid := io.dcache_ready
         
            
           }
@@ -241,16 +232,6 @@ class Execute() extends Module {
             io.dcache_wen := false.B
             io.memory_stall := !io.dcache_ready
             bundle.rd_wen := false.B
-            when(!io.handshake_bypass){
-
-            }.otherwise{
-              // printf("\nHANDSHAKE BYPASSING \n")
-              valid := true.B
-              io.memory_stall := false.B
-              bundle.hbp := true.B
-
-             
-            }
           }
 
           // FENCE — treat as NOP
