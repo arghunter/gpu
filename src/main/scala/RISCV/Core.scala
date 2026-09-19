@@ -11,6 +11,11 @@ class Core() extends Module {
     val io = IO(new Bundle {
         val execute = Input(Bool())
 
+		val allocate_warps = Input(Bool())
+        val warp_count = Input(UInt(32.W))
+
+		val complete = Output(Bool())
+
         val icache_req = Output(new MemReq)
         val icache_start = Output(Bool())
         val icache_ready = Input(Bool())
@@ -27,8 +32,6 @@ class Core() extends Module {
 
         val mem_rd = Input(UInt(5.W))
         val mem_wen = Input(Bool())
-
-        val trigger = Output(Bool())
     })
 
 	val warp_scheduler = Module(new WarpScheduler())
@@ -48,7 +51,11 @@ class Core() extends Module {
     val fetch_stall_prev = RegNext(fetch_stall, true.B)
     val fetch_op = Mux(warp_swap_flush, FetchOp.WS, Mux(jump_flush, FetchOp.RD, Mux(fetch_stall, FetchOp.ST, Mux(false.B, FetchOp.ST, FetchOp.DQ))))
 
+	warp_scheduler.io.execute := io.execute
 	warp_scheduler.io.warp_swap := execute.io.warp_swap
+	warp_scheduler.io.allocate_warps := io.allocate_warps
+	warp_scheduler.io.warp_count := io.warp_count
+	io.complete := warp_scheduler.io.complete
 
     fetch.io.execute := io.execute
     fetch.io.active_warp := warp_scheduler.io.active_warp
@@ -106,8 +113,6 @@ class Core() extends Module {
     registers.io.write_enable2  := writeback.io.mem_write_enable
     registers.io.write_address2 := writeback.io.mem_write_address
     registers.io.in2 := writeback.io.mem_write_val
-
-	io.trigger := false.B
 }
 
 object Core extends App {

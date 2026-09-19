@@ -10,7 +10,12 @@ class Main(lineWidth: Int = 512) extends Module {
     val io = IO(new Bundle {
 		val execute = Input(Bool())
 
-		val vga_clk = Input(Clock());
+		val allocate_warps = Input(Bool())
+        val warp_count = Input(UInt(32.W))
+
+		val complete = Output(Bool())
+
+		val vga_clk = Input(Clock())
 		val hsync = Output(Bool())
 		val vsync = Output(Bool())
 		val rgb = Output(UInt(24.W))
@@ -22,8 +27,6 @@ class Main(lineWidth: Int = 512) extends Module {
 
 		val rxd = Input(Bool())
 		val txd = Output(Bool())
-
-		val trigger = Output(Bool())
     })
 
     val memory = Module(new MemoryWrapper(lineWidth))
@@ -43,8 +46,9 @@ class Main(lineWidth: Int = 512) extends Module {
     memory.io.dcache_wen := core.io.dcache_wen 
 
     core.io.execute := io.execute
-
-	io.trigger := core.io.trigger
+	core.io.allocate_warps := io.allocate_warps
+	core.io.warp_count := io.warp_count
+	io.complete := core.io.complete
 
     io.mem_req       <> memory.io.mem_req
     memory.io.mem_resp := io.mem_resp
@@ -65,18 +69,6 @@ class Main(lineWidth: Int = 512) extends Module {
     io.rgb := vga_controller.io.rgb
     io.blanking := vga_controller.io.blanking
     vga_controller.io.switch := memory.io.switch
-    
-
-  //   when(!io.execute) {
-	// 	printf("Loading...\n");
-
-	// 	when(io.flash) {
-	// 		memory.io.read_1 := false.B
-	// 		memory.io.write_1 := true.B
-	// 		memory.io.address_1 := io.flash_address
-	// 		memory.io.write_value_1 := io.flash_value
-	// 	}
-	// }
 }
 
 object Main extends App {

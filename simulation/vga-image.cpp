@@ -378,6 +378,8 @@ int main(int argc, char** argv) {
     };
 
     dut->io_execute = 0;
+    dut->io_allocate_warps = 0;
+    dut->io_warp_count = 0;
     // dut->io_flash   = 0;
     // dut->io_flash_address = 0;
     // dut->io_flash_value   = 0;
@@ -413,6 +415,18 @@ int main(int argc, char** argv) {
         dut->eval();
     }
     dut->reset = 0;
+
+	dut->io_allocate_warps = 1;
+    dut->io_warp_count = 1;
+
+	for (int i = 0; i < 2; i++) {
+        dut->clock ^= 1;
+        dut->io_vga_clk = dut->clock;
+        dut->eval();
+    }
+
+	dut->io_allocate_warps = 0;
+
     dut->io_execute = 1;
     std::vector<uint8_t> pixels(H_VISIBLE * V_VISIBLE * 3, 0);
     bool prev_vsync = 1;
@@ -425,8 +439,6 @@ int main(int argc, char** argv) {
     long long frame_start_cycle = 0;
     long long frames = 0;
 
-	int trigger_count = 0;
-
     while (!limit_reached()) {
         pixelIdx = 0;
 
@@ -435,9 +447,6 @@ int main(int argc, char** argv) {
             advance_cycle(dut);
 
             bool vsync = dut->io_vsync;
-
-			if(dut->io_trigger) trigger_count++;
-			if(trigger_count >= 30) return 0;
 
             total_cycles++;
             if (limit_reached()) break;
@@ -455,9 +464,6 @@ int main(int argc, char** argv) {
             bool vsync    = dut->io_vsync;
             bool blanking = dut->io_blanking;
             uint16_t rgb12 = dut->io_rgb;
-
-			if(dut->io_trigger) trigger_count++;
-			if(trigger_count >= 30) return 0;
 
             total_cycles++;
 
