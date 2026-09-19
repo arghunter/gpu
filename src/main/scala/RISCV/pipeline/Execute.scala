@@ -8,63 +8,63 @@ object ExecState extends ChiselEnum {
 }
 
 class Execute() extends Module {
-  val io = IO(new Bundle {
-    val instruction = Input(Valid(new InstructionBundle()))
-    val next_instruction = Output(Valid(new InstructionBundle()))
-    val flush = Input(Bool())
-    val stall = Input(Bool())
+	val io = IO(new Bundle {
+		val instruction = Input(Valid(new InstructionBundle()))
+		val next_instruction = Output(Valid(new InstructionBundle()))
+		val flush = Input(Bool())
+		val stall = Input(Bool())
 
-    val pc_redirect = Output(Valid(UInt(32.W)))
+		val pc_redirect = Output(Valid(UInt(32.W)))
 
-    val dcache_req = Output(new MemReq)
-    val dcache_start = Output(Bool())
-    val dcache_ready = Input(Bool())
-    val dcache_valid = Input(Bool())
-    val dcache_data = Input(UInt(32.W))
-    val dcache_rd = Output(UInt(5.W))
-    val dcache_wen = Output(Bool())
-    val handshake_bypass = Input(Bool())
+		val dcache_req = Output(new MemReq)
+		val dcache_start = Output(Bool())
+		val dcache_ready = Input(Bool())
+		val dcache_valid = Input(Bool())
+		val dcache_data = Input(UInt(32.W))
+		val dcache_rd = Output(UInt(5.W))
+		val dcache_wen = Output(Bool())
+		val handshake_bypass = Input(Bool())
 
-    val memory_stall = Output(Bool())
+		val memory_stall = Output(Bool())
 		val jump_flush = Output(Bool())
-  })
+	})
 
-  val alu = Module(new ALU())
-  val malu = Module(new MALU())
+	val alu = Module(new ALU())
+	val malu = Module(new MALU())
 
-  val state = RegInit(ExecState.IDLE)
-  val bundle = RegInit(0.U.asTypeOf(new InstructionBundle()))
-  val valid = RegInit(false.B)
+	val state = RegInit(ExecState.IDLE)
+	val bundle = RegInit(0.U.asTypeOf(new InstructionBundle()))
+	val valid = RegInit(false.B)
 
-  // defaults
-  io.pc_redirect.valid := false.B
-  io.pc_redirect.bits := 0.U
-  io.dcache_start := false.B
-  io.dcache_req.address := 0.U
-  io.dcache_req.write_data := 0.U
-  io.dcache_req.op := MemOp.LW
-  io.dcache_req.read := false.B
-  io.dcache_req.write := false.B
-  io.memory_stall := false.B
-  io.next_instruction.valid := false.B
-  io.next_instruction.bits := bundle
-  io.jump_flush := false.B
-  io.dcache_rd := 0.U
-  io.dcache_wen := false.B
+	// defaults
+	io.pc_redirect.valid := false.B
+	io.pc_redirect.bits := 0.U
+	io.dcache_start := false.B
+	io.dcache_req.address := 0.U
+	io.dcache_req.write_data := 0.U
+	io.dcache_req.op := MemOp.LW
+	io.dcache_req.read := false.B
+	io.dcache_req.write := false.B
+	io.memory_stall := false.B
+	io.next_instruction.valid := false.B
+	io.next_instruction.bits := bundle
+	io.jump_flush := false.B
+	io.dcache_rd := 0.U
+	io.dcache_wen := false.B
 
-  alu.io.func7 := io.instruction.bits.func7
-  // func7 is instruction(31,25), which on an I-type op is really imm[11:5], so the ALU has to
-  // know the format before it trusts a func7 that looks like Zbb.
-  alu.io.isR := io.instruction.bits.opcode === "b0110011".U
-  alu.io.func3 := io.instruction.bits.func3
-  alu.io.a := io.instruction.bits.rs1_val
-  alu.io.b := 0.U
+	alu.io.func7 := io.instruction.bits.func7
+	// func7 is instruction(31,25), which on an I-type op is really imm[11:5], so the ALU has to
+	// know the format before it trusts a func7 that looks like Zbb.
+	alu.io.isR := io.instruction.bits.opcode === "b0110011".U
+	alu.io.func3 := io.instruction.bits.func3
+	alu.io.a := io.instruction.bits.rs1_val
+	alu.io.b := 0.U
 
-  malu.io.func7 := io.instruction.bits.func7
-  malu.io.func3 := io.instruction.bits.func3
-  malu.io.a := io.instruction.bits.rs1_val
-  malu.io.b := 0.U
-  malu.io.start := false.B
+	malu.io.func7 := io.instruction.bits.func7
+	malu.io.func3 := io.instruction.bits.func3
+	malu.io.a := io.instruction.bits.rs1_val
+	malu.io.b := 0.U
+	malu.io.start := false.B
 
 
 
