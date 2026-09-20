@@ -1,7 +1,11 @@
 #include <stdint.h>
 
-__attribute__((naked)) void _start(void) {
+__attribute__((naked, section(".text.unlikely"))) void _start(void) {
     __asm__ volatile(
+        ".option push\n"
+        ".option norelax\n"
+        "la   gp, __global_pointer$\n"
+        ".option pop\n"
         "li sp, 0x8000000\n"
         "call main\n"
         "loop: j loop\n"
@@ -71,9 +75,9 @@ void draw_mandelbrot(volatile unsigned int* frame, int cx, int cy, int zoom) {
     trace("draw: cy=", (unsigned int)cy);
     trace("draw: zoom=", (unsigned int)zoom);
     trace("draw: x_start=", (unsigned int)x_start);
-    // trace("draw: y_start=", (unsigned int)y_start);
-    // trace("draw: x_step=", (unsigned int)x_step);
-    // trace("draw: y_step=", (unsigned int)y_step);
+    trace("draw: y_start=", (unsigned int)y_start);
+    trace("draw: x_step=", (unsigned int)x_step);
+    trace("draw: y_step=", (unsigned int)y_step);
 
     for (int py = 0; py < 240; py++) {
         int ci = y_start + py * y_step;

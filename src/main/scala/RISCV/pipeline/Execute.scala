@@ -40,6 +40,10 @@ class Execute(cfg: GpuConfig) extends Module {
   val bundle = RegInit(0.U.asTypeOf(new InstructionBundle(cfg)))
   val valid = RegInit(false.B)
   val lane_serializer = RegInit(0.U((log2Up(cfg.nLanes)+1).W))
+
+  val lmask = RegInit(((BigInt(1)<< cfg.nLanes)-1).U(cfg.nLanes.W))
+  val active_lane = PriorityEncoder(lmask)
+
   // defaults
   io.mem_issue := false.B
   io.mem_issue_rd := 0.U
@@ -85,12 +89,13 @@ class Execute(cfg: GpuConfig) extends Module {
         valid := valid
         bundle := bundle
       }.elsewhen(io.instruction.valid) {
+
         val inst = io.instruction.bits
+        bundle := inst
         val pc_plus_4 = inst.pc + 4.U
         val pc_plus_imm = inst.pc + inst.immediate
-        val addr = inst.rs1_val(0) + inst.immediate
-        
-        bundle := inst
+        val addr = inst.rs1_val(active_lane) + inst.immediate
+        bundle.mask := lmask
         bundle.rd_wen := false.B
         bundle.rd_val := VecInit(Seq.fill(cfg.nLanes)(0.U(32.W)))
         valid := true.B
@@ -115,11 +120,26 @@ class Execute(cfg: GpuConfig) extends Module {
 
           }
           is("b0001011".U){
+            bundle.mask := Fill(cfg.nLanes, 1.U)
             when(inst.func7 ==="b0000000".U ){
               for( i <- 0 until cfg.nLanes){
                 bundle.rd_wen := true.B
                 bundle.rd_val(i) := i.U
               }
+            }.elsewhen(inst.func7 === "b0000100".U){// ballots, tells which bitmask that is the correct one
+              bundle.rd_wen := true.B //maps the numbers of not zeros to bits
+              val bits = VecInit((0 until cfg.nLanes).map(l => inst.rs1_val(l) =/= 0.U)).asUInt
+              for(i<-0 until cfg.nLanes){
+                bundle.rd_val(i) :=  bits & lmask
+              }
+            }.elsewhen(inst.func7 === "b0000101".U){ //lmask, sets the mask
+              bundle.rd_wen := true.B
+              for(i<-0 until cfg.nLanes){
+                bundle.rd_val(i) :=  lmask
+              }
+              lmask := inst.rs1_val(active_lane)(cfg.nLanes - 1, 0)
+
+
             }
 
           }
@@ -127,9 +147,9 @@ class Execute(cfg: GpuConfig) extends Module {
           // Branch
           is("b1100011".U) {
 
-            val eq = inst.rs1_val(0) === inst.rs2_val(0)
-            val lt_signed = inst.rs1_val(0).asSInt < inst.rs2_val(0).asSInt
-            val lt_unsigned = inst.rs1_val(0) < inst.rs2_val(0)
+            val eq = inst.rs1_val(active_lane) === inst.rs2_val(active_lane)
+            val lt_signed = inst.rs1_val(active_lane).asSInt < inst.rs2_val(active_lane).asSInt
+            val lt_unsigned = inst.rs1_val(active_lane) < inst.rs2_val(active_lane)
             val lt_sel = Mux(inst.func3(1), lt_unsigned, lt_signed)
             val lt_eq_sel = Mux(inst.func3(2), lt_sel, eq)
             val take_branch = lt_eq_sel ^ inst.func3(0)

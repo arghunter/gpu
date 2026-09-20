@@ -74,6 +74,16 @@ class MemoryWrapper(lineWidth: Int = 128, clockFreq: Int = 167000000, baud: Int 
   val is_debug_num = io.dcache_req.address === 0x70000008.U
   val is_switch = io.dcache_req.address === 0x9000000.U
   val is_excep = is_vga || is_htimer || is_keytracker || is_uarttx || is_debug_char || is_debug_num || is_switch
+
+//  when(io.dcache_start) {
+//     printf("REQ excep=%b vga=%b kt=%b ht=%b %c addr=%x rd=%d\n",
+//            is_excep, is_vga, is_keytracker, is_htimer,
+//            Mux(io.dcache_req.write, 0x57.U, 0x52.U),
+//            io.dcache_req.address, io.dcache_rd)
+//   }
+//   when(io.dcache_wen_out) {
+//     printf("RET rd=%d data=%x\n", io.dcache_rd_out, io.dcache_data)
+//   }
   when(is_vga &&  io.dcache_start){
     // printf("is vga bypassing\n\n\n\n")
   }

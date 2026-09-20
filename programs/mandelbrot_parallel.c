@@ -1,7 +1,7 @@
 #include <stdint.h>
 
 
-#define NLANES 8
+#define NLANES 1
 
 static inline int opaque(int x) { __asm__ ("" : "+r"(x)); return x; }
 
@@ -11,9 +11,25 @@ static inline int laneid(void) {
     return r;
 }
 
+static inline int ballot(int p) {
+    int r;
+    __asm__ volatile(".insn r 0x0B, 0, 4, %0, %1, x0" : "=r"(r) : "r"(p));
+    return r;
+}
 
-__attribute__((naked)) void _start(void) {
+static inline int tmc(int m) {
+    int old;
+    __asm__ volatile(".insn r 0x0B, 0, 5, %0, %1, x0" : "=r"(old) : "r"(m));
+    return old;
+}
+
+
+__attribute__((naked, section(".text.unlikely"))) void _start(void) {
     __asm__ volatile(
+        ".option push\n"
+        ".option norelax\n"
+        "la   gp, __global_pointer$\n"
+        ".option pop\n"
         "li sp, 0x8000000\n"
         ".insn r 0x0B, 0, 0, t0, x0, x0\n"
         "slli t0, t0, 12\n"
@@ -58,16 +74,19 @@ static void trace(char *label, unsigned int value) {
 #define SCALE 1024
 #define MAX_ITER 32
 
+/* Set to 1 to print the escape count at the centre of the set. */
+#define MANDEL_PROBE 1
 
+
+/* MAX_ITER is a power of two, so iter == MAX_ITER folds to t == 0, which the
+ * formula already maps to black. No branch and no mask needed. */
 static unsigned int iter_to_color(int iter) {
-    unsigned int t = (unsigned int)iter;
+    unsigned int t = (unsigned int)iter & (MAX_ITER - 1);
     unsigned int r = (t * 8) & 0xFF;
     unsigned int g = (t * 5) & 0xFF;
     unsigned int b = (t * 13) & 0xFF;
 
-    unsigned int keep = (unsigned int)opaque(-(int)(iter != MAX_ITER));
-
-    return ((r << 16) | (g << 8) | b) & keep;
+    return (r << 16) | (g << 8) | b;
 }
 
 void draw_mandelbrot(volatile unsigned int* frame, int cx, int cy, int zoom) {
@@ -80,15 +99,20 @@ void draw_mandelbrot(volatile unsigned int* frame, int cx, int cy, int zoom) {
 
     int lane = laneid();
 
-    trace("draw: cx=", (unsigned int)cx);
-    trace("draw: cy=", (unsigned int)cy);
-    trace("draw: zoom=", (unsigned int)zoom);
-    trace("draw: x_start=", (unsigned int)x_start);
+    // trace("ballot=", (unsigned int)ballot(laneid() & 1));
+    // trace("draw: cx=", (unsigned int)cx);
+    // trace("draw: cy=", (unsigned int)cy);
+    // trace("draw: zoom=", (unsigned int)zoom);
+    // trace("draw: x_start=", (unsigned int)x_start);
 
     for (int py = 0; py < 240; py++) {
         int ci = y_start + py * y_step;
         for (int px = 0; px < 320; px += NLANES) {
             int my_px = px + lane;
+// #if MANDEL_PROBE
+//             if (py == 0 && px == 0) trace("my_px=", (unsigned int)my_px);
+//             if (py == 0 && px == 0) trace("stack=", (unsigned int)&my_px);
+// #endif
             int cr = x_start + my_px * x_step;
             int zr = 0;
             int zi = 0;
@@ -96,23 +120,49 @@ void draw_mandelbrot(volatile unsigned int* frame, int cx, int cy, int zoom) {
 
 
             for (int i = 0; i < MAX_ITER; i++) {
-                int zr_times_zr = zr * zr;       
-                int zi_times_zi = zi * zi;
-                int zr_times_zi = zr * zi;          
+                int zr2 = (zr * zr) >> 10;
+                int zi2 = (zi * zi) >> 10;
+                int zrzi = zr * zi;
 
-                int zr2 = zr_times_zr >> 10;
-                int zi2 = zi_times_zi >> 10;
+                int cond = (zr2 + zi2) <= 4 * SCALE;
 
-                int alive = (zr2 + zi2) <= 4 * SCALE;
-                int m = opaque(-alive);
+                /* Uniform across the warp, so branching on it is safe. This
+                 * is what ballot buys us: the warp stops as soon as its last
+                 * lane escapes instead of always running MAX_ITER times. */
+                int alive = ballot(cond);
+                if (alive == 0) break;
+
+                /* Commit per-lane with arithmetic, not with tmc. Every lane
+                 * executes every instruction, so nothing depends on a register
+                 * surviving an instruction the lane skipped -- which is the
+                 * one thing GCC will not preserve. opaque() stops it proving
+                 * m is 0 or -1 and rewriting this back into a branch. */
+                int m = opaque(-cond);
 
                 int new_zr = zr2 - zi2 + cr;
-                int new_zi = ((2 * zr_times_zi) >> 10) + ci;
+                int new_zi = ((2 * zrzi) >> 10) + ci;
 
                 zr = (new_zr & m) | (zr & ~m);
                 zi = (new_zi & m) | (zi & ~m);
-                iter += alive;
+                iter += cond;
             }
+
+// #if MANDEL_PROBE
+//             /* py/px are warp-uniform, so this branch is safe. Prints once per
+//              * lane, so you get all NLANES values for pixels 160..160+NLANES-1
+//              * near the centre of the set. Expect 00000020 (= MAX_ITER). */
+//             if (py == 120 && px == 160) {
+//                 trace("mid iter=", (unsigned int)iter);
+//             }
+//             /* Store address per lane. Row 0 should be 10000000 + lane*4,
+//              * row 1 should be 10000500 + lane*4 (0x500 = 320*4). */
+//             if (py == 0 && px == 0) {
+//                 trace("row0 addr=", (unsigned int)&frame[320 * py + my_px]);
+//             }
+//             if (py == 1 && px == 0) {
+//                 trace("row1 addr=", (unsigned int)&frame[320 * py + my_px]);
+//             }
+// #endif
 
             frame[320 * py + my_px] = iter_to_color(iter);
         }
@@ -132,9 +182,9 @@ int main() {
     while (1) {
         int ctime = *timer;
 
-        debug_log("frame: step=");
-        debug_hex32((unsigned int)step);
-        debug_log("\n");
+        // debug_log("frame: step=");
+        // debug_hex32((unsigned int)step);
+        // debug_log("\n");
 
         int zoom = 1536;
         for (int i = 0; i < step; i++) {

@@ -63,6 +63,7 @@ class Writeback(cfg: GpuConfig) extends Module {
     }
   }
 
-
+  // when(io.mem_issue)        { printf("PEND+ rd=%d\n", io.mem_issue_rd) }
+  // when(io.mem_write_enable) { printf("PEND- rd=%d\n", io.mem_rd) }
 
 }

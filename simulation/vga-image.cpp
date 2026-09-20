@@ -9,6 +9,7 @@
 #include <string>
 #include <memory>
 #include <chrono>
+#include <thread>
 
 // Reaching into the model's root object lets us re-arm the clock edge detector
 // without spending a whole eval() on the low phase of the clock. See
@@ -288,7 +289,35 @@ static inline void mem_step(const std::unique_ptr<VMain>& dut, MemModel& m) {
 // All eval() does at the low phase that we actually need is record clock's
 // new value so the next eval() sees a rising edge, so we write that one
 // variable ourselves instead.
+
+// ---- optional speed throttle --------------------------------------------
+// SIM_KHZ=N caps the simulated clock at N kHz so the VGA output and the
+// hardware timer run at something like real time. Unset or 0 runs flat out.
+// The wall-clock read is amortised over THROTTLE_CHECK cycles; checking every
+// cycle costs more than the simulation itself.
+static double throttle_period_ns = 0.0;   // ns of wall time per simulated cycle
+static std::chrono::steady_clock::time_point throttle_t0;
+static long long throttle_cycles = 0;
+static constexpr long long THROTTLE_CHECK = 1024;   // power of two
+
+static inline void throttle_tick() {
+    if (throttle_period_ns <= 0.0) return;
+    if ((++throttle_cycles & (THROTTLE_CHECK - 1)) != 0) return;
+    const double want_s = double(throttle_cycles) * throttle_period_ns * 1e-9;
+    for (;;) {
+        const double have_s = std::chrono::duration<double>(
+            std::chrono::steady_clock::now() - throttle_t0).count();
+        const double slack = want_s - have_s;
+        if (slack <= 0.0) break;
+        // Sleep most of the remainder, then spin the last bit: sleep_for
+        // routinely overshoots by a millisecond or more.
+        if (slack > 0.002)
+            std::this_thread::sleep_for(std::chrono::duration<double>(slack * 0.9));
+    }
+}
+
 static inline void advance_cycle(const std::unique_ptr<VMain>& dut) {
+    throttle_tick();
     dut->clock = 1;
     dut->io_vga_clk = 1;
     dut->eval();
@@ -370,6 +399,14 @@ int main(int argc, char** argv) {
 
     const bool keep_ppm = getenv("SIM_PPM") != nullptr;
 
+    if (const char* env = getenv("SIM_KHZ")) {
+        const double khz = atof(env);
+        if (khz > 0.0) {
+            throttle_period_ns = 1.0e6 / khz;   // ns per cycle
+            printf("Throttling to %.1f kHz (%.1f ns/cycle).\n", khz, throttle_period_ns);
+        }
+    }
+
     long long total_cycles = 0;
     bool limited = cycle_limit >= 0;
 
@@ -421,6 +458,7 @@ int main(int argc, char** argv) {
     MemModel mem;
 
     const auto t_start = std::chrono::steady_clock::now();
+    throttle_t0 = t_start;
     auto t_frame = t_start;
     long long frame_start_cycle = 0;
     long long frames = 0;

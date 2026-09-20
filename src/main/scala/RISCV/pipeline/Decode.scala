@@ -75,6 +75,7 @@ class Decode(cfg: GpuConfig) extends Module {
   io.decoded.bits.func7 := func7
   io.decoded.bits.pc := pc
   io.decoded.valid := valid
+  
   // printf("DECODE: stall=%b flush=%b f2d_valid=%b f2d_pc=%x | out_valid=%b out_pc=%x out_opcode=%b rd = %d inst = %x\n",
   // io.stall,
   // io.flush,
