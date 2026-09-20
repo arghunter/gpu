@@ -49,6 +49,8 @@ class Core(cfg : GpuConfig) extends Module {
     val read = Module(new Read(cfg))
     val execute = Module(new Execute(cfg))
     val writeback = Module(new Writeback(cfg))
+    val lsu = Module(new LSU(cfg))
+
 
     val raw_stall = read.io.raw_hazard_stall
     val memory_stall = execute.io.memory_stall
@@ -94,25 +96,27 @@ class Core(cfg : GpuConfig) extends Module {
 
     execute.io.flush := RegNext(jump_flush)
     execute.io.stall := false.B
+    execute.io.lsu_req <> lsu.io.req
 
 
 
-    io.dcache_req := execute.io.dcache_req
-    io.dcache_start := execute.io.dcache_start
-    execute.io.dcache_ready := io.dcache_ready
-    execute.io.dcache_valid := io.dcache_valid
-    io.dcache_rd := execute.io.dcache_rd
-    io.dcache_lane := execute.io.dcache_lane
-    io.dcache_wen := execute.io.dcache_wen
+    io.dcache_req := lsu.io.dcache_req
+    io.dcache_start := lsu.io.dcache_start
+    lsu.io.dcache_ready := io.dcache_ready
+    io.dcache_rd := lsu.io.dcache_rd
+    io.dcache_lane := lsu.io.dcache_lane
+    io.dcache_wen := lsu.io.dcache_wen
 
     writeback.io.instruction := execute.io.next_instruction
     writeback.io.mem_write_data := VecInit(Seq.fill(cfg.nLanes)(io.dcache_data))
     writeback.io.mem_rd := io.mem_rd
     writeback.io.mem_wen := io.mem_wen
+    
 
     writeback.io.mem_mask :=  UIntToOH(io.mem_lane,cfg.nLanes)
     writeback.io.mem_issue := execute.io.mem_issue
     writeback.io.mem_issue_rd := execute.io.mem_issue_rd
+    writeback.io.mem_issue_count := execute.io.mem_issue_count
 
     registers.io.write_enable := writeback.io.write_enable
     registers.io.write_address := writeback.io.write_address

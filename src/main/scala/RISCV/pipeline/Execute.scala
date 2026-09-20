@@ -16,19 +16,14 @@ class Execute(cfg: GpuConfig) extends Module {
 
     val pc_redirect = Output(Valid(UInt(32.W)))
 
-    val dcache_req = Output(new MemReq)
-    val dcache_start = Output(Bool())
-    val dcache_ready = Input(Bool())
-    val dcache_valid = Input(Bool())
-    val dcache_rd = Output(UInt(5.W))
-    val dcache_lane = Output(UInt(log2Up(cfg.nLanes).max(1).W))
-    val dcache_wen = Output(Bool())
+    val lsu_req = Decoupled(new VecMemReq(cfg))
 
     val memory_stall = Output(Bool())
 		val jump_flush = Output(Bool())
 
     val mem_issue = Output(Bool())
     val mem_issue_rd = Output(UInt(5.W))
+    val mem_issue_count = Output(UInt(log2Up(cfg.nLanes + 1).W))
   })
 
   val alus = Seq.fill(cfg.nLanes)(Module(new ALU()))
@@ -39,7 +34,6 @@ class Execute(cfg: GpuConfig) extends Module {
   val state = RegInit(ExecState.IDLE)
   val bundle = RegInit(0.U.asTypeOf(new InstructionBundle(cfg)))
   val valid = RegInit(false.B)
-  val lane_serializer = RegInit(0.U((log2Up(cfg.nLanes)+1).W))
 
   val lmask = RegInit(((BigInt(1)<< cfg.nLanes)-1).U(cfg.nLanes.W))
   val active_lane = PriorityEncoder(lmask)
@@ -47,21 +41,23 @@ class Execute(cfg: GpuConfig) extends Module {
   // defaults
   io.mem_issue := false.B
   io.mem_issue_rd := 0.U
+  io.mem_issue_count := 0.U
+  io.lsu_req.valid := false.B
+  io.lsu_req.bits.base  := io.instruction.bits.rs1_val
+  io.lsu_req.bits.wdata := io.instruction.bits.rs2_val
+  io.lsu_req.bits.imm   := io.instruction.bits.immediate
+  io.lsu_req.bits.mask  := lmask
+  io.lsu_req.bits.rd    := io.instruction.bits.rd
+  io.lsu_req.bits.func3 := io.instruction.bits.func3
+  io.lsu_req.bits.write := false.B
   io.pc_redirect.valid := false.B
   io.pc_redirect.bits := 0.U
-  io.dcache_start := false.B
-  io.dcache_req.address := 0.U
-  io.dcache_req.write_data := 0.U
-  io.dcache_req.op := MemOp.LW
-  io.dcache_req.read := false.B
-  io.dcache_req.write := false.B
+ 
   io.memory_stall := false.B
   io.next_instruction.valid := false.B
   io.next_instruction.bits := bundle
   io.jump_flush := false.B
-  io.dcache_rd := 0.U
-  io.dcache_lane := 0.U
-  io.dcache_wen := false.B
+
 
  
   for (i <- 0 until cfg.nLanes) {
@@ -200,20 +196,24 @@ class Execute(cfg: GpuConfig) extends Module {
             io.jump_flush := true.B
           }
 
-          // Load
+  
           is("b0000011".U) {
-            lane_serializer := 0.U
-            io.memory_stall := true.B
-            state:= ExecState.MEM_WAIT
-        
-           
+            io.lsu_req.valid := true.B
+            io.lsu_req.bits.write := false.B
+            io.memory_stall := !io.lsu_req.ready
+            valid := io.lsu_req.ready
+            bundle.rd_wen := false.B
+            io.mem_issue := io.lsu_req.ready
+            io.mem_issue_rd := inst.rd
+            io.mem_issue_count := PopCount(lmask)
           }
 
-          // Store
           is("b0100011".U) {
-            lane_serializer := 0.U
-            io.memory_stall := true.B
-            state:= ExecState.MEM_WAIT
+            io.lsu_req.valid := true.B
+            io.lsu_req.bits.write := true.B
+            io.memory_stall := !io.lsu_req.ready
+            valid := io.lsu_req.ready
+            bundle.rd_wen := false.B
           }
 
           // FENCE — treat as NOP
@@ -225,73 +225,6 @@ class Execute(cfg: GpuConfig) extends Module {
         valid := false.B
       }
     }
-    is(ExecState.MEM_WAIT){
-      io.memory_stall:=true.B
-      val inst = io.instruction.bits
-      when(lane_serializer < cfg.nLanes.U){
-        val addr = inst.rs1_val(lane_serializer) + inst.immediate
-        io.dcache_lane := lane_serializer(log2Up(cfg.nLanes).max(1) - 1, 0)
-        when(io.dcache_ready){
-          when(inst.mask(lane_serializer)){
-            
-            
-            when(inst.opcode === "b0100011".U){//store
-              io.dcache_req.address := addr
-        
-              io.dcache_req.write_data := inst.rs2_val(lane_serializer)
-              io.dcache_req.read := false.B
-              io.dcache_req.write := true.B
-              io.dcache_req.op := MuxLookup(inst.func3, MemOp.SW)(Seq(
-                "b000".U -> MemOp.SB,
-                "b001".U -> MemOp.SH,
-                "b010".U -> MemOp.SW
-              ))
-              io.dcache_start := io.dcache_ready
-              io.dcache_rd := 0.U
-              io.mem_issue_rd := 0.U
-              io.dcache_wen := false.B
-              bundle.rd_wen := false.B
-            }.otherwise{
-              io.dcache_req.address := addr
-              io.dcache_req.read := true.B
-              io.dcache_req.write := false.B
-              io.dcache_req.op := MuxLookup(inst.func3, MemOp.LW)(Seq(
-                "b000".U -> MemOp.LB,
-                "b001".U -> MemOp.LH,
-                "b010".U -> MemOp.LW,
-                "b100".U -> MemOp.LBU,  
-                "b101".U -> MemOp.LHU   
-              ))
-
-              io.dcache_start := io.dcache_ready
-              io.dcache_rd := inst.rd
-              io.mem_issue_rd := inst.rd
-              io.dcache_wen := true.B
-              bundle.rd_wen := false.B
-              io.mem_issue:= true.B
-
-           
-
-            }
-
-          }
-         
-          when(lane_serializer === (cfg.nLanes - 1).U){
-            lane_serializer := 0.U
-            state := ExecState.IDLE
-            valid := true.B
-            io.memory_stall := false.B
-          }.otherwise{
-            lane_serializer := lane_serializer + 1.U
-          }
-        }
-
-
-      
-      }
-    }
-
-
   }
 
   when(state === ExecState.IDLE) {

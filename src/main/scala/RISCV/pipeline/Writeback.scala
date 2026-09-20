@@ -26,6 +26,7 @@ class Writeback(cfg: GpuConfig) extends Module {
 
     val mem_issue = Input(Bool())
     val mem_issue_rd = Input(UInt(5.W))
+    val mem_issue_count = Input(UInt((log2Up(cfg.nLanes)+1).W))
 
 
   })
@@ -56,11 +57,12 @@ class Writeback(cfg: GpuConfig) extends Module {
   for(i <- 0 until 32){
     val inc = io.mem_issue && io.mem_issue_rd === i.U 
     val dec = io.mem_write_enable && io.mem_write_address === i.U 
-    when(inc && !dec) {
-      mem_pending(i) := mem_pending(i) + 1.U
-    }.elsewhen(dec && !inc){
+    when(inc){
+      mem_pending(i) := mem_pending(i) + io.mem_issue_count - Mux(dec, 1.U,0.U)
+    }.elsewhen(!inc && dec){
       mem_pending(i) := mem_pending(i) - 1.U
     }
+  
   }
 
   // when(io.mem_issue)        { printf("PEND+ rd=%d\n", io.mem_issue_rd) }
