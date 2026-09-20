@@ -27,6 +27,9 @@ class Fetch() extends Module {
 		val mark_pc = Input(UInt(32.W))
 		val mark_warp = Input(UInt(2.W))
 
+		val allocate_warp = Input(Bool())
+		val allocate_id = Input(UInt(2.W))
+
 		val fetch_request = Input(new FetchReq)
 		val fetch_result = Output(Valid(new FetchResult))
 		
@@ -42,6 +45,10 @@ class Fetch() extends Module {
 
 	when(io.mark) {
 		instruction_pointers(io.mark_warp) := io.mark_pc
+	}
+
+	when(io.allocate_warp) {
+		instruction_pointers(io.allocate_id) := 0.U
 	}
 	
 	val ignore_instruction = RegInit(false.B)

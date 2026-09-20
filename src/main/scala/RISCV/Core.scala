@@ -53,6 +53,7 @@ class Core() extends Module {
 
 	warp_scheduler.io.execute := io.execute
 	warp_scheduler.io.warp_swap := execute.io.warp_swap
+	warp_scheduler.io.warp_terminate := execute.io.warp_terminate
 	warp_scheduler.io.allocate_warps := io.allocate_warps
 	warp_scheduler.io.warp_count := io.warp_count
 	io.complete := warp_scheduler.io.complete
@@ -62,6 +63,8 @@ class Core() extends Module {
 	fetch.io.mark := execute.io.mark
 	fetch.io.mark_pc := execute.io.mark_pc
 	fetch.io.mark_warp := execute.io.mark_warp
+	fetch.io.allocate_warp := warp_scheduler.io.allocate_warp
+	fetch.io.allocate_id := warp_scheduler.io.allocate_id
     fetch.io.fetch_request.fetch_op := fetch_op
     fetch.io.fetch_request.redirect_addr := execute.io.pc_redirect.bits
     fetch.io.icache_ready := io.icache_ready
@@ -94,7 +97,7 @@ class Core() extends Module {
     execute.io.dcache_ready := io.dcache_ready
     execute.io.dcache_valid := io.dcache_valid
     execute.io.dcache_data := io.dcache_data
-	execute.io.active_warp := warp_scheduler.io.active_warp
+	execute.io.active_warp_id := warp_scheduler.io.active_warp_id
 
     io.dcache_rd := execute.io.dcache_rd
     io.dcache_wen := execute.io.dcache_wen

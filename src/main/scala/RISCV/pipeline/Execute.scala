@@ -26,12 +26,13 @@ class Execute() extends Module {
 		val jump_flush = Output(Bool())
 
 		val warp_swap = Output(Bool())
+		val warp_terminate = Output(Bool())
 
 		val mark = Output(Bool())
 		val mark_pc = Output(UInt(32.W))
 		val mark_warp = Output(UInt(2.W))
 
-		val active_warp = Input(UInt(2.W))
+		val active_warp_id = Input(UInt(32.W))
 	})
 
 	val alu = Module(new ALU())
@@ -54,7 +55,6 @@ class Execute() extends Module {
 	io.jump_flush := false.B
 	io.dcache_rd := 0.U
 	io.dcache_wen := false.B
-	io.warp_swap := false.B
 
 	alu.io.func7 := io.instruction.bits.func7
 	// func7 is instruction(31,25), which on an I-type op is really imm[11:5], so the ALU has to
@@ -71,6 +71,9 @@ class Execute() extends Module {
 	malu.io.start := false.B
 
 	valid := false.B
+
+	io.warp_swap := false.B
+	io.warp_terminate := false.B
 
 	io.mark := false.B
 	io.mark_pc := 0.U
@@ -219,8 +222,13 @@ class Execute() extends Module {
 
 				// Lane Instructions
 				is("b00001011".U) {
-					bundle.rd_val := io.active_warp
-					bundle.rd_wen := true.B
+					when(inst.func7 === "b0000010".U) {
+						io.warp_terminate := true.B
+						io.warp_swap := true.B
+					}.otherwise {
+						bundle.rd_val := io.active_warp_id
+						bundle.rd_wen := true.B
+					}
 				}
 			}
 		}
