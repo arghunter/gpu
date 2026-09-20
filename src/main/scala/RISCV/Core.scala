@@ -129,6 +129,7 @@ class Core(cfg : GpuConfig) extends Module {
 
 	registers.io.read_address_a := read.io.register_read_a
     registers.io.read_address_b := read.io.register_read_b
+    registers.io.read_enable := read.io.register_read_enable
     registers.io.write_enable := writeback.io.write_enable
     registers.io.write_address := writeback.io.write_address
     registers.io.in := writeback.io.write_val

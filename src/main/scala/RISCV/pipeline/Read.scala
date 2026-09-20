@@ -16,6 +16,7 @@ class Read(cfg: GpuConfig) extends Module {
     val stall = Input(Bool())
     val rum  = Input(UInt(128.W))
     val raw_hazard_stall = Output(Bool())
+    val register_read_enable = Output(Bool())
   })
 
 	val raw_hazard = io.instruction.valid && (
@@ -25,6 +26,7 @@ class Read(cfg: GpuConfig) extends Module {
 	)
 
 	io.raw_hazard_stall := raw_hazard
+	io.register_read_enable := !io.flush && !io.stall && !raw_hazard
 
   io.register_read_a := io.instruction.bits.rs1
   io.register_read_b := io.instruction.bits.rs2
@@ -40,9 +42,10 @@ class Read(cfg: GpuConfig) extends Module {
   }.otherwise {
       bundle := io.instruction.bits
       valid := io.instruction.valid
-      bundle.rs1_val := io.register_value_a
-      bundle.rs2_val := io.register_value_b
   }
+
+  bundle_w.rs1_val := io.register_value_a
+  bundle_w.rs2_val := io.register_value_b
 
   io.next_instruction.bits := bundle_w
   io.next_instruction.valid := valid
