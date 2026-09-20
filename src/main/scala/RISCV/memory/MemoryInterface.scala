@@ -26,11 +26,11 @@ class MemoryInterface(lineWidth: Int = 128, cfg: GpuConfig = GpuConfig()) extend
     val dcache_ready = Output(Bool())
     val dcache_valid = Output(Bool())
     val dcache_data = Output(UInt(32.W))
-    val dcache_rd = Input(UInt(5.W))
+    val dcache_rd = Input(UInt(7.W))
     val dcache_lane = Input(UInt(log2Up(cfg.nLanes).max(1).W))
     val dcache_wen = Input(Bool())
 
-    val dcache_rd_out = Output(UInt(5.W))
+    val dcache_rd_out = Output(UInt(7.W))
     val dcache_lane_out = Output(UInt(log2Up(cfg.nLanes).max(1).W))
     val dcache_wen_out = Output(Bool())
 

@@ -10,7 +10,7 @@ class VecMemReq(cfg: GpuConfig) extends Bundle {
   val wdata = Vec(cfg.nLanes, UInt(32.W))  
   val imm = UInt(32.W)
   val mask = UInt(cfg.nLanes.W)
-  val rd = UInt(5.W)
+  val rd = UInt(7.W)
   val func3 = UInt(3.W)
   val write = Bool()
 }
@@ -24,7 +24,7 @@ class LSU(cfg: GpuConfig) extends Module {
     val dcache_req  = Output(new MemReq)
     val dcache_start = Output(Bool())
     val dcache_ready = Input(Bool())
-    val dcache_rd = Output(UInt(5.W))
+    val dcache_rd = Output(UInt(7.W))
     val dcache_lane  = Output(UInt(laneW.W))
     val dcache_wen  = Output(Bool())
     val busy = Output(Bool())          

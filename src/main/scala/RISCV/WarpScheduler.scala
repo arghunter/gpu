@@ -11,6 +11,9 @@ class WarpScheduler() extends Module {
 
         val active_warp = Output(UInt(2.W))
         val active_warp_id = Output(UInt(32.W))
+        /* indexed by slot, so a stage can look up the id belonging to the
+         * instruction it holds rather than the warp that is active now */
+        val warp_ids_out = Output(Vec(4, UInt(32.W)))
 
         val warp_swap = Input(Bool())
         val warp_terminate = Input(Bool())
@@ -49,6 +52,7 @@ class WarpScheduler() extends Module {
 
 	io.active_warp := active_warp
 	io.active_warp_id := warp_ids(active_warp)
+	io.warp_ids_out := warp_ids
 
 	io.warp_swap_flush := false.B
 
@@ -101,7 +105,7 @@ class WarpScheduler() extends Module {
 		}
 
 		when(io.warp_swap) {
-			printf("Swapped warp due to warp swap request! Current Warp: %d\n", active_warp)
+			// printf("Swapped warp due to warp swap request! Current Warp: %d\n", active_warp)
 
 			when(io.warp_terminate) {
 				printf("Warp terminated!\n")
@@ -114,7 +118,7 @@ class WarpScheduler() extends Module {
 		}
 
 		when(!active_warps(active_warp)) {
-			printf("Swapped warp due inactive warp! Current Warp: %d\n", active_warp)
+			// printf("Swapped warp due inactive warp! Current Warp: %d\n", active_warp)
 
 			io.warp_swap_flush := true.B
 			active_warp := active_warp + 1.U

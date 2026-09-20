@@ -53,6 +53,8 @@ class Fetch() extends Module {
 	
 	val ignore_instruction = RegInit(false.B)
 	val request_instruction_pointer = RegInit(0.U(32.W))
+
+	val request_warp = RegInit(0.U(2.W))
 	val request_in_flight = RegInit(false.B)
 
 	val fetch_result = Reg(new FetchResult)
@@ -80,6 +82,7 @@ class Fetch() extends Module {
 			io.icache_req.address := speculative_instruction_pointers(io.active_warp)
 			io.icache_start := true.B
 			request_instruction_pointer := speculative_instruction_pointers(io.active_warp)
+			request_warp := io.active_warp
 			speculative_instruction_pointers(io.active_warp) := speculative_instruction_pointers(io.active_warp) + 4.U
 		}
 
@@ -88,6 +91,7 @@ class Fetch() extends Module {
 				io.icache_req.address := io.fetch_request.redirect_addr
 				io.icache_start := true.B
 				request_instruction_pointer := io.fetch_request.redirect_addr
+				request_warp := io.active_warp
 				speculative_instruction_pointers(io.active_warp) := io.fetch_request.redirect_addr + 4.U
 			}.otherwise {
 				speculative_instruction_pointers(io.active_warp) := io.fetch_request.redirect_addr
@@ -114,6 +118,7 @@ class Fetch() extends Module {
 			when(io.icache_valid && !ignore_instruction) {
 				fetch_result.pc := request_instruction_pointer
 				fetch_result.inst := io.icache_data
+				fetch_result.warp := request_warp
 				fetch_result_valid := true.B
 			}.elsewhen(dequeuing) {
 				fetch_result_valid := false.B

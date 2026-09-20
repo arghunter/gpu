@@ -454,7 +454,7 @@ int main(int argc, char** argv) {
     dut->reset = 0;
 
 	dut->io_allocate_warps = 1;
-    dut->io_warp_count = 1000;
+    dut->io_warp_count = 4;
 
 	for (int i = 0; i < 2; i++) {
         dut->clock ^= 1;
@@ -477,7 +477,7 @@ int main(int argc, char** argv) {
     long long frame_start_cycle = 0;
     long long frames = 0;
 
-    while (!limit_reached() && !dut->io_complete) {
+    while (!limit_reached()) {
         pixelIdx = 0;
 
         while (true) {
@@ -493,7 +493,7 @@ int main(int argc, char** argv) {
             prev_vsync = vsync;
         }
         prev_vsync = 0;
-        if (limit_reached() || dut->io_complete) break;
+        if (limit_reached()) break;
 
         for (int cycle = 0; cycle < H_TOTAL * V_TOTAL; cycle++) {
             mem_step(dut, mem);
@@ -514,7 +514,7 @@ int main(int argc, char** argv) {
                 pixelIdx++;
             }
 
-            if (limit_reached() || dut->io_complete) break;
+            if (limit_reached()) break;
         }
 
         if (keep_ppm) {

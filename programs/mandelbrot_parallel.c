@@ -95,29 +95,23 @@ static unsigned int iter_to_color(int iter) {
 }
 
 void draw_mandelbrot(volatile unsigned int* frame, int cx, int cy, int zoom) {
-    int x_start = cx - zoom;
-    int y_start = cy - (zoom * 240 / 320);
     int x_step = (zoom * 2) / 320;
     int y_step = (zoom * 2 * 240 / 320) / 240;
     if (x_step < 1) x_step = 1;
     if (y_step < 1) y_step = 1;
+    /* Corner from the truncated step, so the window stays centred on cx/cy
+     * as zoom shrinks -- see mandelbrot_warp.c. */
+    int x_start = cx - x_step * 160;
+    int y_start = cy - y_step * 120;
 
     int lane = laneid();
 
-    // trace("ballot=", (unsigned int)ballot(laneid() & 1));
-    // trace("draw: cx=", (unsigned int)cx);
-    // trace("draw: cy=", (unsigned int)cy);
-    // trace("draw: zoom=", (unsigned int)zoom);
-    // trace("draw: x_start=", (unsigned int)x_start);
 
     for (int py = 0; py < 240; py++) {
         int ci = y_start + py * y_step;
         for (int px = 0; px < 320; px += NLANES) {
             int my_px = px + lane;
-// #if MANDEL_PROBE
-//             if (py == 0 && px == 0) trace("my_px=", (unsigned int)my_px);
-//             if (py == 0 && px == 0) trace("stack=", (unsigned int)&my_px);
-// #endif
+
             int cr = x_start + my_px * x_step;
             int zr = 0;
             int zi = 0;
@@ -131,7 +125,6 @@ void draw_mandelbrot(volatile unsigned int* frame, int cx, int cy, int zoom) {
                 int zi2 = (zi * zi) >> 10;
                 int zrzi = zr * zi;
 
-                /* Uniform across the warp, so branching on it is safe. */
                 int active = ballot((zr2 + zi2) <= 4 * SCALE);
                 if (active == 0) break;
 

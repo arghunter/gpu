@@ -6,7 +6,7 @@ import _root_.circt.stage.ChiselStage
 
 class MemReqWrapped(cfg : GpuConfig) extends Bundle {
   val req = new MemReq
-  val rd = UInt(5.W)
+  val rd = UInt(7.W)
   val lane = UInt(log2Up(cfg.nLanes).max(1).W)
   val wen = Bool()
 }
@@ -18,7 +18,7 @@ class DCacheQueue( lineWidth: Int = 128, cfg: GpuConfig) extends Module {
         val ready = Output(Bool())
         val valid = Output(Bool())
         val data = Output(UInt(32.W))
-        val rd = Output(UInt(5.W))
+        val rd = Output(UInt(7.W))
         val lane = Output(UInt(log2Up(cfg.nLanes).max(1).W))
         val wen = Output(Bool())
 
