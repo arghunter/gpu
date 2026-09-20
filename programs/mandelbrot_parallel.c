@@ -1,9 +1,7 @@
 #include <stdint.h>
 
 
-#define NLANES 1
-
-static inline int opaque(int x) { __asm__ ("" : "+r"(x)); return x; }
+#define NLANES 16
 
 static inline int laneid(void) {
     int r;
@@ -16,6 +14,13 @@ static inline int ballot(int p) {
     __asm__ volatile(".insn r 0x0B, 0, 4, %0, %1, x0" : "=r"(r) : "r"(p));
     return r;
 }
+
+/* Predicated commit. dst is read-modify-write: masked-off lanes keep their old
+ * value, and the "+r" constraint tells GCC dst is live across the masked
+ * region so it cannot reuse the register as scratch beforehand. Writing
+ * `dst = src` in plain C does not convey that and GCC will clobber dst. */
+#define PMOV(dst, src) __asm__("mv %0, %1" : "+r"(dst) : "r"(src))
+#define PINC(dst)      __asm__("addi %0, %0, 1" : "+r"(dst))
 
 static inline int tmc(int m) {
     int old;
@@ -119,50 +124,27 @@ void draw_mandelbrot(volatile unsigned int* frame, int cx, int cy, int zoom) {
             int iter = 0;
 
 
+            int outer = (1 << NLANES) - 1;
+
             for (int i = 0; i < MAX_ITER; i++) {
                 int zr2 = (zr * zr) >> 10;
                 int zi2 = (zi * zi) >> 10;
                 int zrzi = zr * zi;
 
-                int cond = (zr2 + zi2) <= 4 * SCALE;
+                /* Uniform across the warp, so branching on it is safe. */
+                int active = ballot((zr2 + zi2) <= 4 * SCALE);
+                if (active == 0) break;
 
-                /* Uniform across the warp, so branching on it is safe. This
-                 * is what ballot buys us: the warp stops as soon as its last
-                 * lane escapes instead of always running MAX_ITER times. */
-                int alive = ballot(cond);
-                if (alive == 0) break;
+                int nzr = zr2 - zi2 + cr;
+                int nzi = ((2 * zrzi) >> 10) + ci;
 
-                /* Commit per-lane with arithmetic, not with tmc. Every lane
-                 * executes every instruction, so nothing depends on a register
-                 * surviving an instruction the lane skipped -- which is the
-                 * one thing GCC will not preserve. opaque() stops it proving
-                 * m is 0 or -1 and rewriting this back into a branch. */
-                int m = opaque(-cond);
-
-                int new_zr = zr2 - zi2 + cr;
-                int new_zi = ((2 * zrzi) >> 10) + ci;
-
-                zr = (new_zr & m) | (zr & ~m);
-                zi = (new_zi & m) | (zi & ~m);
-                iter += cond;
+                tmc(active);
+                PMOV(zr, nzr);
+                PMOV(zi, nzi);
+                PINC(iter);
             }
 
-// #if MANDEL_PROBE
-//             /* py/px are warp-uniform, so this branch is safe. Prints once per
-//              * lane, so you get all NLANES values for pixels 160..160+NLANES-1
-//              * near the centre of the set. Expect 00000020 (= MAX_ITER). */
-//             if (py == 120 && px == 160) {
-//                 trace("mid iter=", (unsigned int)iter);
-//             }
-//             /* Store address per lane. Row 0 should be 10000000 + lane*4,
-//              * row 1 should be 10000500 + lane*4 (0x500 = 320*4). */
-//             if (py == 0 && px == 0) {
-//                 trace("row0 addr=", (unsigned int)&frame[320 * py + my_px]);
-//             }
-//             if (py == 1 && px == 0) {
-//                 trace("row1 addr=", (unsigned int)&frame[320 * py + my_px]);
-//             }
-// #endif
+            tmc(outer);
 
             frame[320 * py + my_px] = iter_to_color(iter);
         }

@@ -159,6 +159,8 @@ class Execute(cfg: GpuConfig) extends Module {
             bundle.rd_wen := false.B
             io.jump_flush := take_branch
 
+            
+
           }
 
           // LUI

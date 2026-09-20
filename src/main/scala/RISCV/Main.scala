@@ -34,7 +34,7 @@ class Main(lineWidth: Int = 512) extends Module {
 
     })
 
-    val gpucfg = GpuConfig(1,1,512)
+    val gpucfg = GpuConfig(16,1,512)
     val memory = Module(new MemoryWrapper(lineWidth, cfg = gpucfg))
     val core = Module(new Core(gpucfg))
     core.io.latch_in := memory.io.latch_out > 0.U
