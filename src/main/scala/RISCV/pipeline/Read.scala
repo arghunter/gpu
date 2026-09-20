@@ -26,7 +26,7 @@ class Read(cfg: GpuConfig) extends Module {
 	)
 
 	io.raw_hazard_stall := raw_hazard
-	io.register_read_enable := !io.flush && !io.stall && !raw_hazard
+	io.register_read_enable := true.B
 
   io.register_read_a := io.instruction.bits.rs1
   io.register_read_b := io.instruction.bits.rs2

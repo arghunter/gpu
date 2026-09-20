@@ -91,7 +91,9 @@ class WarpScheduler() extends Module {
 			barrier_waiting(active_warp) := true.B
 		}
 
-		when(io.warp_swap) {
+		val runnable = active_warps.asUInt & (~barrier_waiting.asUInt).asUInt
+		val others = (runnable & (~UIntToOH(active_warp, 4)).asUInt).orR
+		when(io.warp_swap && (others || io.warp_terminate || io.barrier)) {
 			// printf("Swapped warp due to warp swap request! Current Warp: %d\n", active_warp)
 
 			when(io.warp_terminate) {

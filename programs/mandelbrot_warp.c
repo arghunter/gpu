@@ -26,7 +26,7 @@
  * cannot happen. */
 
 #define NLANES     16
-#define LANE_SHIFT  4      /* log2(NLANES) -- must match */
+#define LANE_SHIFT  4    /* log2(NLANES) -- must match */
 #define NWARPS      4      /* <= 4: barriers only reach resident warps */
 #define FRAMES      0      /* 0 = endless zoom; N = draw N frames then terminate */
 

@@ -73,7 +73,7 @@ class Fetch() extends Module {
 	val redirecting = io.execute && io.fetch_request.fetch_op === FetchOp.RD
 	val warp_switching = io.execute && io.fetch_request.fetch_op === FetchOp.WS
 
-	val can_issue = io.icache_ready && !fetch_result_valid
+	val can_issue = io.icache_ready && !fetch_result_valid && !io.icache_valid
 
 	when(io.execute) {
     
