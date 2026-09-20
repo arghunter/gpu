@@ -35,6 +35,16 @@ class Execute(cfg: GpuConfig) extends Module {
     val mark_warp = Output(UInt(2.W))
 
     val warp_ids = Input(Vec(4, UInt(32.W)))
+
+    val spawn = Output(Bool())
+    val spawn_count  = Output(UInt(32.W))
+    val spawn_pc_in = Output(UInt(32.W))
+
+    val allocate_warp = Input(Bool())
+    val allocate_id = Input(UInt(2.W))
+
+    val barrier = Output(Bool())
+    val barrier_target = Output(UInt(32.W))
   })
 
   val alus = Seq.fill(cfg.nLanes)(Module(new ALU()))
@@ -52,6 +62,8 @@ class Execute(cfg: GpuConfig) extends Module {
   val active_lane = PriorityEncoder(lmask(cur_warp))
 
   // defaults
+  io.barrier := false.B
+  io.barrier_target := 0.U
   io.mem_issue := false.B
   io.mem_issue_rd := 0.U
   io.mem_issue_count := 0.U
@@ -75,7 +87,9 @@ class Execute(cfg: GpuConfig) extends Module {
   io.mark := false.B
   io.mark_pc := 0.U
   io.mark_warp := 0.U
-
+  io.spawn := false.B
+  io.spawn_count := 0.U
+  io.spawn_pc_in := 0.U
   for (i <- 0 until cfg.nLanes) {
     alus(i).io.func7 := io.instruction.bits.func7
     // func7 is instruction(31,25), which on an I-type op is really imm[11:5], so the ALU has to
@@ -157,12 +171,20 @@ class Execute(cfg: GpuConfig) extends Module {
               for(i <- 0 until cfg.nLanes){
                 bundle.rd_val(i) := bits & lmask(cur_warp)
               }
-            }.elsewhen(inst.func7 === "b0000101".U){    // tmc: swap the mask
+            }.elsewhen(inst.func7 === "b0000101".U){    // tmc: swap mask
               bundle.rd_wen := true.B
               for(i <- 0 until cfg.nLanes){
                 bundle.rd_val(i) := lmask(cur_warp)
               }
               lmask(cur_warp) := inst.rs1_val(active_lane)(cfg.nLanes - 1, 0)
+            }.elsewhen(inst.func7 === "b0000110".U) {   // wspawn
+              io.spawn       := true.B
+              io.spawn_count := inst.rs1_val(active_lane)
+              io.spawn_pc_in := inst.rs2_val(active_lane)
+            }.elsewhen(inst.func7 === "b0000111".U){
+              io.barrier := true.B
+              io.barrier_target := inst.rs1_val(active_lane)
+              io.warp_swap := true.B
             }
           }
 
@@ -249,7 +271,7 @@ class Execute(cfg: GpuConfig) extends Module {
       }
     }
   }
-
+  when(io.allocate_warp) { lmask(io.allocate_id) := Fill(cfg.nLanes, 1.U) }
   when(state === ExecState.IDLE) {
     val is_jump_or_branch = bundle.opcode === "b1101111".U ||
                           bundle.opcode === "b1100111".U ||

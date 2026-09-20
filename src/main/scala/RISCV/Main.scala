@@ -55,6 +55,7 @@ class Main(lineWidth: Int = 512) extends Module {
 	core.io.warp_count := io.warp_count
 	io.complete := core.io.complete
 
+
     io.mem_req       <> memory.io.mem_req
     memory.io.mem_resp := io.mem_resp
     memory.io.mem_valid := io.mem_valid

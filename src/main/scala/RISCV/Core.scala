@@ -61,9 +61,13 @@ class Core(cfg : GpuConfig) extends Module {
 	warp_scheduler.io.execute := io.execute
 	warp_scheduler.io.warp_swap := execute.io.warp_swap
 	warp_scheduler.io.warp_terminate := execute.io.warp_terminate
-	warp_scheduler.io.allocate_warps := io.allocate_warps
-	warp_scheduler.io.warp_count := io.warp_count
+	// warp_scheduler.io.allocate_warps := io.allocate_warps
+	// warp_scheduler.io.warp_count := io.warp_count
 	io.complete := warp_scheduler.io.complete
+    warp_scheduler.io.barrier        := execute.io.barrier
+    warp_scheduler.io.barrier_target := execute.io.barrier_target
+    warp_scheduler.io.lsu_busy       := lsu.io.busy
+
 
     fetch.io.execute := io.execute
     fetch.io.active_warp := warp_scheduler.io.active_warp
@@ -104,6 +108,12 @@ class Core(cfg : GpuConfig) extends Module {
     execute.io.flush := RegNext(jump_flush)
     execute.io.stall := false.B
     execute.io.lsu_req <> lsu.io.req
+    execute.io.allocate_id := warp_scheduler.io.allocate_id
+    execute.io.allocate_warp := warp_scheduler.io.allocate_warp
+    warp_scheduler.io.spawn := execute.io.spawn
+    warp_scheduler.io.spawn_count := execute.io.spawn_count
+    warp_scheduler.io.spawn_pc_in := execute.io.spawn_pc_in
+    fetch.io.allocate_pc := warp_scheduler.io.allocate_pc
 
 
 

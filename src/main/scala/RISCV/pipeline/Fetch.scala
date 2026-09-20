@@ -28,6 +28,7 @@ class Fetch() extends Module {
 		val mark_warp = Input(UInt(2.W))
 
 		val allocate_warp = Input(Bool())
+    val allocate_pc = Input(UInt(32.W))
 		val allocate_id = Input(UInt(2.W))
 
 		val fetch_request = Input(new FetchReq)
@@ -47,9 +48,6 @@ class Fetch() extends Module {
 		instruction_pointers(io.mark_warp) := io.mark_pc
 	}
 
-	when(io.allocate_warp) {
-		instruction_pointers(io.allocate_id) := 0.U
-	}
 	
 	val ignore_instruction = RegInit(false.B)
 	val request_instruction_pointer = RegInit(0.U(32.W))
@@ -78,6 +76,7 @@ class Fetch() extends Module {
 	val can_issue = io.icache_ready && !fetch_result_valid
 
 	when(io.execute) {
+    
 		when((dequeuing || stalling) && can_issue) {
 			io.icache_req.address := speculative_instruction_pointers(io.active_warp)
 			io.icache_start := true.B
@@ -109,6 +108,10 @@ class Fetch() extends Module {
 		}
 	}
 
+	when(io.allocate_warp) {
+		instruction_pointers(io.allocate_id) := io.allocate_pc
+    speculative_instruction_pointers(io.allocate_id) :=  io.allocate_pc
+	}
 	when(redirecting) {
 		fetch_result_valid := false.B        
 	}.otherwise {
