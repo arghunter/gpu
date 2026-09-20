@@ -5,47 +5,41 @@ import _root_.circt.stage.ChiselStage
 import scala.math._
 import chisel3.util._
 
-case class GpuConfig(nLanes: Int = 1, nWarps: Int = 1, lineWidth: Int = 512)
+case class GpuConfig(nLanes: Int = 1)
 
 
 class Main(lineWidth: Int = 512) extends Module {
     val io = IO(new Bundle {
 		val execute = Input(Bool())
 
+		val allocate_warps = Input(Bool())
+        val warp_count = Input(UInt(32.W))
 
-    val vga_clk = Input(Clock());
-    val hsync = Output(Bool())
-    val vsync = Output(Bool())
-    val rgb = Output(UInt(24.W))
-    val blanking = Output(Bool())
+		val complete = Output(Bool())
 
-    val mem_req   = Decoupled(new MemLineReq(lineWidth))   
-    val mem_resp  = Input(UInt(lineWidth.W))
-    val mem_valid = Input(Bool()) 
+		val vga_clk = Input(Clock())
+		val hsync = Output(Bool())
+		val vsync = Output(Bool())
+		val rgb = Output(UInt(24.W))
+		val blanking = Output(Bool())
 
-    val debug_reg = Output(UInt(32.W))
-    val debug_pc = Output(UInt(32.W))
+		val mem_req   = Decoupled(new MemLineReq(lineWidth))   
+		val mem_resp  = Input(UInt(lineWidth.W))
+		val mem_valid = Input(Bool()) 
 
-    val rxd = Input(Bool())
-    val txd = Output(Bool())
-
-    val mem_stall = Output(Bool())
-
-
+		val rxd = Input(Bool())
+		val txd = Output(Bool())
     })
 
-    val gpucfg = GpuConfig(16,1,512)
+    val gpucfg = GpuConfig(16)
     val memory = Module(new MemoryWrapper(lineWidth, cfg = gpucfg))
     val core = Module(new Core(gpucfg))
-    core.io.latch_in := memory.io.latch_out > 0.U
-    io.debug_reg := core.io.debug_reg
-    io.debug_pc := core.io.debug_pc
+
     memory.io.icache_req := core.io.icache_req
     memory.io.icache_start := core.io.icache_start
     core.io.icache_ready := memory.io.icache_ready
     core.io.icache_valid := memory.io.icache_valid
     core.io.icache_data := memory.io.icache_data
-    io.mem_stall := core.io.mem_stall
 
     memory.io.dcache_req := core.io.dcache_req
     memory.io.dcache_start := core.io.dcache_start
@@ -57,7 +51,9 @@ class Main(lineWidth: Int = 512) extends Module {
     memory.io.dcache_wen := core.io.dcache_wen 
 
     core.io.execute := io.execute
-   
+	core.io.allocate_warps := io.allocate_warps
+	core.io.warp_count := io.warp_count
+	io.complete := core.io.complete
 
     io.mem_req       <> memory.io.mem_req
     memory.io.mem_resp := io.mem_resp
@@ -79,22 +75,6 @@ class Main(lineWidth: Int = 512) extends Module {
     io.rgb := vga_controller.io.rgb
     io.blanking := vga_controller.io.blanking
     vga_controller.io.switch := memory.io.switch
-
-
-    
-
-    
-
-  //   when(!io.execute) {
-	// 	printf("Loading...\n");
-
-	// 	when(io.flash) {
-	// 		memory.io.read_1 := false.B
-	// 		memory.io.write_1 := true.B
-	// 		memory.io.address_1 := io.flash_address
-	// 		memory.io.write_value_1 := io.flash_value
-	// 	}
-	// }
 }
 
 object Main extends App {

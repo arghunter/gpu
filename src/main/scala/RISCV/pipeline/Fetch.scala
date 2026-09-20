@@ -3,7 +3,7 @@ import chisel3._
 import chisel3.util._
 
 object FetchOp extends ChiselEnum {
-  val ST, RD, DQ = Value // Stall, Redirect, Dequeue
+  val ST, RD, DQ, WS = Value // Stall, Redirect, Dequeue, Warp Switch
 }
 
 class FetchReq extends Bundle {
@@ -11,117 +11,119 @@ class FetchReq extends Bundle {
   val redirect_addr = UInt(32.W)
 }
 
-class F2D extends Bundle {
+class FetchResult extends Bundle {
   val pc = UInt(32.W)
+  val warp = UInt(2.W)
   val inst = UInt(32.W)
 }
 
 class Fetch() extends Module {
-  val io = IO(new Bundle {
-    val f_req = Input(new FetchReq)
-    val f2d = Output(Valid(new F2D))
-    val execute = Input(Bool())
-    val icache_req = Output(new MemReq)
-    val icache_start = Output(Bool())
-    val icache_ready = Input(Bool())
-    val icache_valid = Input(Bool())
-    val icache_data  = Input(UInt(32.W))
-  })
+	val io = IO(new Bundle {
+		val execute = Input(Bool())
 
-  val pc = RegInit(0.U(32.W))
-  val req_pc = RegInit(0.U(32.W))
-  val ignoreInstr = RegInit(false.B)
-  val in_flight = RegInit(false.B)
+		val active_warp = Input(UInt(2.W))
 
-  
-  val f2d0 = Reg(new F2D)
-  val f2d1 = Reg(new F2D)
-  val v0 = RegInit(false.B)
-  val v1 = RegInit(false.B)
+		val mark = Input(Bool())
+		val mark_pc = Input(UInt(32.W))
+		val mark_warp = Input(UInt(2.W))
 
-  io.icache_req.address := pc
-  io.icache_req.op := MemOp.LW
-  io.icache_req.write_data := 0.U
-  io.icache_req.read := true.B
-  io.icache_req.write := false.B
-  io.icache_start := false.B
+		val allocate_warp = Input(Bool())
+		val allocate_id = Input(UInt(2.W))
 
-  io.f2d.valid := v0
-  io.f2d.bits := f2d0
+		val fetch_request = Input(new FetchReq)
+		val fetch_result = Output(Valid(new FetchResult))
+		
+		val icache_req = Output(new MemReq)
+		val icache_start = Output(Bool())
+		val icache_ready = Input(Bool())
+		val icache_valid = Input(Bool())
+		val icache_data  = Input(UInt(32.W))
+	})
 
-  val redirecting = io.execute && io.f_req.fetch_op === FetchOp.RD
-  val dequeuing = io.execute && io.f_req.fetch_op === FetchOp.DQ
-  val pop = dequeuing && v0
+	val speculative_instruction_pointers = RegInit(VecInit(Seq.fill(4.toInt)(0.U(32.W))))
+	val instruction_pointers = RegInit(VecInit(Seq.fill(4.toInt)(0.U(32.W))))
 
+	when(io.mark) {
+		instruction_pointers(io.mark_warp) := io.mark_pc
+	}
 
-  val pending= v0.asUInt +& v1.asUInt +& in_flight.asUInt
-  val effective_pending = pending - pop.asUInt
-  val can_issue = io.icache_ready && (effective_pending <= 1.U)
+	when(io.allocate_warp) {
+		instruction_pointers(io.allocate_id) := 0.U
+	}
+	
+	val ignore_instruction = RegInit(false.B)
+	val request_instruction_pointer = RegInit(0.U(32.W))
+	val request_in_flight = RegInit(false.B)
 
-  def issue(addr: UInt): Unit = {
-    io.icache_req.address := addr
-    io.icache_start := true.B
-    req_pc := addr
-    pc:= addr + 4.U
-  }
+	val fetch_result = Reg(new FetchResult)
+	val fetch_result_valid = RegInit(false.B)
 
-  val in_flight_w = Mux(io.icache_start, true.B,Mux(io.icache_valid, false.B, in_flight))
+	io.icache_req.address := speculative_instruction_pointers(io.active_warp)
+	io.icache_req.op := MemOp.LW
+	io.icache_req.write_data := 0.U
+	io.icache_req.read := true.B
+	io.icache_req.write := false.B
+	io.icache_start := false.B
 
-  when(io.execute) {
-    switch(io.f_req.fetch_op) {
-      is(FetchOp.DQ) { when(can_issue) { issue(pc) } }
-      is(FetchOp.ST) { when(can_issue) { issue(pc) } }
-      is(FetchOp.RD) {
-        when(can_issue) {
-          issue(io.f_req.redirect_addr)
-        }.otherwise {
-          pc := io.f_req.redirect_addr
-        }
-        ignoreInstr := in_flight && !io.icache_valid
-      }
-    }
-  }
+	io.fetch_result.valid := fetch_result_valid
+	io.fetch_result.bits := fetch_result
 
-  val push = io.icache_valid && !ignoreInstr && !redirecting
+	val stalling = io.execute && io.fetch_request.fetch_op === FetchOp.ST
+	val dequeuing = io.execute && io.fetch_request.fetch_op === FetchOp.DQ
+	val redirecting = io.execute && io.fetch_request.fetch_op === FetchOp.RD
+	val warp_switching = io.execute && io.fetch_request.fetch_op === FetchOp.WS
 
-  when(io.icache_valid && ignoreInstr) { ignoreInstr := false.B }
+	val can_issue = io.icache_ready && !fetch_result_valid
 
-  when(redirecting) {
-    v0 := false.B        
-    v1 := false.B
-  }.otherwise {
-    when(pop) {
-      when(push) {
-        when(v1) {
-          f2d0 := f2d1
-          f2d1.pc := req_pc
-          f2d1.inst := io.icache_data
-        }.otherwise {
-          f2d0.pc := req_pc
-          f2d0.inst := io.icache_data
-          v0 := true.B
-          v1 := false.B
-        }
-      }.otherwise {
-        when(v1) { f2d0 := f2d1; v1 := false.B }
-         .otherwise { v0 := false.B }
-      }
-    }.otherwise {
-      when(push) {
-        when(!v0) {
-          f2d0.pc := req_pc
-          f2d0.inst := io.icache_data
-          v0 := true.B
-        }.elsewhen(!v1) {
-          f2d1.pc := req_pc
-          f2d1.inst := io.icache_data
-          v1 := true.B
-        }
-      }
-    }
-  }
-  in_flight := in_flight_w
+	when(io.execute) {
+		when((dequeuing || stalling) && can_issue) {
+			io.icache_req.address := speculative_instruction_pointers(io.active_warp)
+			io.icache_start := true.B
+			request_instruction_pointer := speculative_instruction_pointers(io.active_warp)
+			speculative_instruction_pointers(io.active_warp) := speculative_instruction_pointers(io.active_warp) + 4.U
+		}
+
+		when(redirecting) {
+			when(can_issue) {
+				io.icache_req.address := io.fetch_request.redirect_addr
+				io.icache_start := true.B
+				request_instruction_pointer := io.fetch_request.redirect_addr
+				speculative_instruction_pointers(io.active_warp) := io.fetch_request.redirect_addr + 4.U
+			}.otherwise {
+				speculative_instruction_pointers(io.active_warp) := io.fetch_request.redirect_addr
+			}
+
+			ignore_instruction := request_in_flight && !io.icache_valid
+		}
+
+		when(warp_switching) {
+			for(i <- 0 until 4) {
+				speculative_instruction_pointers(i.U) := instruction_pointers(i.U)
+			}
+
+			ignore_instruction := request_in_flight && !io.icache_valid
+		}
+	}
+
+	when(redirecting) {
+		fetch_result_valid := false.B        
+	}.otherwise {
+		when(warp_switching) {
+			fetch_result_valid := false.B
+		}.otherwise {
+			when(io.icache_valid && !ignore_instruction) {
+				fetch_result.pc := request_instruction_pointer
+				fetch_result.inst := io.icache_data
+				fetch_result_valid := true.B
+			}.elsewhen(dequeuing) {
+				fetch_result_valid := false.B
+			}
+		}
+	}
+
+	when(io.icache_valid && ignore_instruction) {
+		ignore_instruction := false.B
+	}
+
+	request_in_flight := io.icache_start || (!io.icache_valid && request_in_flight)
 }
-
-// Parts of this file were generated from a previous Fetch Module I wrote in Bluespec
-// and didn't want to write from scratch. TBH though, I'm not a big fan and will probably redo it later 

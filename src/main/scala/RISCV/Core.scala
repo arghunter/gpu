@@ -11,6 +11,11 @@ class Core(cfg : GpuConfig) extends Module {
     val io = IO(new Bundle {
         val execute = Input(Bool())
 
+		val allocate_warps = Input(Bool())
+        val warp_count = Input(UInt(32.W))
+
+		val complete = Output(Bool())
+
         val icache_req = Output(new MemReq)
         val icache_start = Output(Bool())
         val icache_ready = Input(Bool())
@@ -29,20 +34,24 @@ class Core(cfg : GpuConfig) extends Module {
         val mem_rd = Input(UInt(5.W))
         val mem_lane = Input(UInt(log2Up(cfg.nLanes).max(1).W))
         val mem_wen = Input(Bool())
-
-        val debug_reg = Output(UInt(32.W))
-        val debug_pc = Output(UInt(32.W))
-
-        val latch_in = Input(Bool())
-        val mem_stall = Output(Bool())
-
     })
 
+<<<<<<< HEAD
     val registers = Module(new Registers(cfg))
     registers.io.read_address_a := 0.U(5.W)
     registers.io.read_address_b := 0.U(5.W)
     io.debug_reg :=0.U //TODO Remove from scaffold
+||||||| 6fe8822
+    val registers = Module(new Registers())
+    registers.io.read_address_a := 0.U(5.W)
+    registers.io.read_address_b := 0.U(5.W)
+    io.debug_reg := registers.io.debug_1
+=======
+	val warp_scheduler = Module(new WarpScheduler())
+    val registers = Module(new Registers())
+>>>>>>> origin/warps
     val fetch = Module(new Fetch())
+<<<<<<< HEAD
     io.debug_pc := fetch.io.f2d.bits.pc
 
     val decode = Module(new Decode(cfg))
@@ -51,49 +60,73 @@ class Core(cfg : GpuConfig) extends Module {
     val writeback = Module(new Writeback(cfg))
     val lsu = Module(new LSU(cfg))
 
+||||||| 6fe8822
+    io.debug_pc := fetch.io.f2d.bits.pc
+
+    val decode = Module(new Decode())
+    val read = Module(new Read())
+    val execute = Module(new Execute())
+    val writeback = Module(new Writeback())
+=======
+    val decode = Module(new Decode())
+    val read = Module(new Read())
+    val execute = Module(new Execute())
+    val writeback = Module(new Writeback())
+>>>>>>> origin/warps
 
     val raw_stall = read.io.raw_hazard_stall
     val memory_stall = execute.io.memory_stall
     val jump_flush = execute.io.jump_flush
-
-    io.mem_stall := memory_stall
+    val warp_swap_flush = warp_scheduler.io.warp_swap_flush
 
     val fetch_stall = raw_stall || memory_stall || !io.execute
     val fetch_stall_prev = RegNext(fetch_stall, true.B)
-    val fetch_op =
-        Mux(jump_flush, FetchOp.RD, Mux(fetch_stall, FetchOp.ST, Mux(false.B, FetchOp.ST, FetchOp.DQ))) 
+    val fetch_op = Mux(warp_swap_flush, FetchOp.WS, Mux(jump_flush, FetchOp.RD, Mux(fetch_stall, FetchOp.ST, Mux(false.B, FetchOp.ST, FetchOp.DQ))))
 
-    fetch.io.f_req.fetch_op := fetch_op
-    fetch.io.f_req.redirect_addr := execute.io.pc_redirect.bits
+	warp_scheduler.io.execute := io.execute
+	warp_scheduler.io.warp_swap := execute.io.warp_swap
+	warp_scheduler.io.warp_terminate := execute.io.warp_terminate
+	warp_scheduler.io.allocate_warps := io.allocate_warps
+	warp_scheduler.io.warp_count := io.warp_count
+	io.complete := warp_scheduler.io.complete
+
     fetch.io.execute := io.execute
-
-    io.icache_req := fetch.io.icache_req
-    io.icache_start := fetch.io.icache_start
+    fetch.io.active_warp := warp_scheduler.io.active_warp
+	fetch.io.mark := execute.io.mark
+	fetch.io.mark_pc := execute.io.mark_pc
+	fetch.io.mark_warp := execute.io.mark_warp
+	fetch.io.allocate_warp := warp_scheduler.io.allocate_warp
+	fetch.io.allocate_id := warp_scheduler.io.allocate_id
+    fetch.io.fetch_request.fetch_op := fetch_op
+    fetch.io.fetch_request.redirect_addr := execute.io.pc_redirect.bits
     fetch.io.icache_ready := io.icache_ready
     fetch.io.icache_valid := io.icache_valid
     fetch.io.icache_data := io.icache_data
-
-    decode.io.f2d := fetch.io.f2d
-    decode.io.flush := jump_flush
+    
+	io.icache_start := fetch.io.icache_start
+	io.icache_req := fetch.io.icache_req
+    io.icache_start := fetch.io.icache_start
+	
+    decode.io.fetch_result := fetch.io.fetch_result
+    decode.io.flush := jump_flush || warp_swap_flush
     decode.io.stall := fetch_stall
+	decode.io.active_warp := warp_scheduler.io.active_warp
 
-    read.io.instruction := decode.io.decoded
-    registers.io.read_address_a := read.io.register_read_a
-    registers.io.read_address_b := read.io.register_read_b
-    read.io.register_value_a := registers.io.out_a
-    read.io.register_value_b := registers.io.out_b
-
-    read.io.flush := jump_flush
-    read.io.stall := memory_stall
-
-    val rum = (execute.io.next_instruction.valid.asUInt << execute.io.next_instruction.bits.rd) |
+	val register_use_map = (execute.io.next_instruction.valid.asUInt << execute.io.next_instruction.bits.rd) |
           (read.io.next_instruction.valid.asUInt << read.io.next_instruction.bits.rd) |
           (writeback.io.write_enable.asUInt << writeback.io.write_address) |
           writeback.io.reg_mem_rum
-    read.io.rum := rum
+
+    read.io.instruction := decode.io.decoded
+    read.io.register_value_a := registers.io.out_a
+    read.io.register_value_b := registers.io.out_b
+    read.io.flush := jump_flush || warp_swap_flush
+    read.io.stall := memory_stall
+    read.io.rum := register_use_map
 
     execute.io.instruction := read.io.next_instruction
 
+<<<<<<< HEAD
     execute.io.flush := RegNext(jump_flush)
     execute.io.stall := false.B
     execute.io.lsu_req <> lsu.io.req
@@ -106,25 +139,64 @@ class Core(cfg : GpuConfig) extends Module {
     io.dcache_rd := lsu.io.dcache_rd
     io.dcache_lane := lsu.io.dcache_lane
     io.dcache_wen := lsu.io.dcache_wen
+||||||| 6fe8822
+    execute.io.flush := RegNext(jump_flush)
+    execute.io.stall := false.B
+
+
+
+    io.dcache_req := execute.io.dcache_req
+    io.dcache_start := execute.io.dcache_start
+    execute.io.dcache_ready := io.dcache_ready
+    execute.io.dcache_valid := io.dcache_valid
+    execute.io.dcache_data := io.dcache_data
+    io.dcache_rd := execute.io.dcache_rd
+    io.dcache_wen := execute.io.dcache_wen
+=======
+    execute.io.dcache_ready := io.dcache_ready
+    execute.io.dcache_valid := io.dcache_valid
+    execute.io.dcache_data := io.dcache_data
+	execute.io.active_warp_id := warp_scheduler.io.active_warp_id
+
+    io.dcache_rd := execute.io.dcache_rd
+    io.dcache_wen := execute.io.dcache_wen
+	io.dcache_start := execute.io.dcache_start
+	io.dcache_req := execute.io.dcache_req
+>>>>>>> origin/warps
 
     writeback.io.instruction := execute.io.next_instruction
     writeback.io.mem_write_data := VecInit(Seq.fill(cfg.nLanes)(io.dcache_data))
     writeback.io.mem_rd := io.mem_rd
     writeback.io.mem_wen := io.mem_wen
+<<<<<<< HEAD
     
 
     writeback.io.mem_mask :=  UIntToOH(io.mem_lane,cfg.nLanes)
     writeback.io.mem_issue := execute.io.mem_issue
     writeback.io.mem_issue_rd := execute.io.mem_issue_rd
     writeback.io.mem_issue_count := execute.io.mem_issue_count
+||||||| 6fe8822
+    writeback.io.stall := memory_stall
+=======
+>>>>>>> origin/warps
 
+	registers.io.read_address_a := read.io.register_read_a
+    registers.io.read_address_b := read.io.register_read_b
     registers.io.write_enable := writeback.io.write_enable
     registers.io.write_address := writeback.io.write_address
     registers.io.in := writeback.io.write_val
+<<<<<<< HEAD
 
     registers.io.write_enable2 := writeback.io.mem_write_enable
+||||||| 6fe8822
+
+    registers.io.write_enable2  := writeback.io.mem_write_enable
+=======
+    registers.io.write_enable2  := writeback.io.mem_write_enable
+>>>>>>> origin/warps
     registers.io.write_address2 := writeback.io.mem_write_address
     registers.io.in2 := writeback.io.mem_write_val
+<<<<<<< HEAD
     registers.io.write_mask := writeback.io.write_mask
     registers.io.write_mask2 := writeback.io.mem_write_mask
 
@@ -254,6 +326,138 @@ when(io.latch_in || io.execute) {
 		// printf("09: %x\n", registers.io.debug_9);
 		// printf("10: %x\n\n\n", registers.io.debug_10);		
 	}
+||||||| 6fe8822
+    registers.io.in2            := writeback.io.mem_write_val
+
+    io.icache_start := fetch.io.icache_start
+
+
+    when(false.B){ // Perf Counters
+        val clockCount = RegInit(0.U(32.W))
+        val instCount  = RegInit(0.U(32.W))
+
+        clockCount := clockCount + 1.U
+
+        val last_fetched_inst = RegNext(fetch.io.f2d.bits.inst, 0.U)
+        val new_inst_detected = fetch.io.f2d.valid && (fetch.io.f2d.bits.inst =/= last_fetched_inst)
+        when(new_inst_detected) {
+        instCount := instCount + 1.U
+        }
+
+        val mem_stall_cycles = RegInit(0.U(32.W))
+        when(memory_stall) {
+        mem_stall_cycles := mem_stall_cycles + 1.U
+        }
+
+        val raw_stall_cycles = RegInit(0.U(32.W))
+        when(raw_stall) {
+        raw_stall_cycles := raw_stall_cycles + 1.U
+        }
+
+        val flush_count = RegInit(0.U(32.W))
+        when(jump_flush) {
+        flush_count := flush_count + 1.U
+        }
+
+        val LOG_INTERVAL = 1000000
+        val log_counter = RegInit(0.U(log2Up(LOG_INTERVAL).W))
+        val log_fire = log_counter === (LOG_INTERVAL - 1).U
+        log_counter := Mux(log_fire, 0.U, log_counter + 1.U)
+
+        when(log_fire) {
+        printf("\n=== PERF @ cycle %d ===\n", clockCount)
+        printf("instructions retired: %d\n", instCount)
+        printf("mem_stall_cycles: %d  raw_stall_cycles: %d  flushes: %d\n",
+            mem_stall_cycles, raw_stall_cycles, flush_count)
+        }
+    }
+
+
+when(io.latch_in || io.execute) {
+// printf("=== Fetch ===\n")
+// printf("fetch op %d\n",fetch_op.asUInt)
+// printf("f2d valid: %b\n",  fetch.io.f2d.valid)
+// // // printf("f2d pc: %d  inst: %x Regs: 01: %x 02: %x 03: %x 04: %x 05: %x 06: %x 07: %x 08: %x 09: %x 10: %x 11: %x 12: %x 13: %x 14: %x 15: %x 16: %x 17: %x 18: %x 19: %x 20: %x 21: %x 22: %x 23: %x 24: %x 25: %x 26: %x 27: %x 28: %x 29: %x 30: %x 31: %x \n", fetch.io.f2d.bits.pc, fetch.io.f2d.bits.inst, registers.io.debug_1, registers.io.debug_2, registers.io.debug_3, registers.io.debug_4, registers.io.debug_5, registers.io.debug_6, registers.io.debug_7, registers.io.debug_8, registers.io.debug_9, registers.io.debug_10, registers.io.debug_11, registers.io.debug_12, registers.io.debug_13, registers.io.debug_14, registers.io.debug_15, registers.io.debug_16, registers.io.debug_17, registers.io.debug_18, registers.io.debug_19, registers.io.debug_20, registers.io.debug_21, registers.io.debug_22, registers.io.debug_23, registers.io.debug_24, registers.io.debug_25, registers.io.debug_26, registers.io.debug_27, registers.io.debug_28, registers.io.debug_29, registers.io.debug_30, registers.io.debug_31);// printf("f2d inst: %b\n",  fetch.io.f2d.bits.inst)
+// printf("f2d pc: %d inst: %x fop: %d stall: %d rum: %b\n", fetch.io.f2d.bits.pc, fetch.io.f2d.bits.inst, fetch_op.asUInt, fetch_stall,rum );
+// printf("f2d inst: %b\n",  fetch.io.f2d.bits.inst)
+
+// printf("icache valid: %b\n",   fetch.io.icache_valid)
+// printf("jump_flush=%b fetch_op=%d redirect=%x\n", jump_flush, fetch_op.asUInt, execute.io.pc_redirect.bits)
+// // // printf("decode consumed: %b\n",   decode_consumed)
+
+// printf("=== Decode ===\n")
+// printf("valid: %b\n",  decode.io.decoded.valid)
+// printf("pc: %d\n",  decode.io.decoded.bits.pc)
+// printf("opcode: %b\n",  decode.io.decoded.bits.opcode)
+// printf("func3:%b\n", decode.io.decoded.bits.func3)
+// printf("func7:%b\n", decode.io.decoded.bits.func7)
+// printf("rd:   %d\n", decode.io.decoded.bits.rd)
+// printf("rs1:  %d\n", decode.io.decoded.bits.rs1)
+// printf("rs2:  %d\n", decode.io.decoded.bits.rs2)
+// printf("imm:  %d\n", decode.io.decoded.bits.immediate)
+// printf("rd_wen:%b\n", decode.io.decoded.bits.rd_wen)
+
+// printf("=== Read ===\n")
+// printf("valid:%b\n", read.io.next_instruction.valid)
+// printf("pc:   %d\n", read.io.next_instruction.bits.pc)
+// printf("opcode:%b\n", read.io.next_instruction.bits.opcode)
+// printf("func3:%b\n", read.io.next_instruction.bits.func3)
+// printf("func7:%b\n", read.io.next_instruction.bits.func7)
+// printf("rd:   %d\n", read.io.next_instruction.bits.rd)
+// printf("rd_wen:%b\n", read.io.next_instruction.bits.rd_wen)
+// printf("rs1:  %d\n", read.io.next_instruction.bits.rs1)
+// printf("rs1_val:   %x\n", read.io.next_instruction.bits.rs1_val)
+// printf("rs2:  %d\n", read.io.next_instruction.bits.rs2)
+// printf("rs2_val:   %x\n", read.io.next_instruction.bits.rs2_val)
+// printf("imm:  %d\n", read.io.next_instruction.bits.immediate)
+// printf("raw_stall: %b\n", read.io.raw_hazard_stall)
+// printf("rum:  %b\n", rum)
+
+// printf("=== Execute ===\n")
+// printf("valid:%b\n", execute.io.next_instruction.valid)
+// printf("pc:   %d\n", execute.io.next_instruction.bits.pc)
+// printf("opcode:%b\n", execute.io.next_instruction.bits.opcode)
+// printf("func3:%b\n", execute.io.next_instruction.bits.func3)
+// printf("func7:%b\n", execute.io.next_instruction.bits.func7)
+// printf("rd:   %d\n", execute.io.next_instruction.bits.rd)
+// printf("rd_wen:%b\n", execute.io.next_instruction.bits.rd_wen)
+// printf("rd_val:%x\n", execute.io.next_instruction.bits.rd_val)
+// printf("rs1:  %d\n", execute.io.next_instruction.bits.rs1)
+// printf("rs1_val:   %x\n", execute.io.next_instruction.bits.rs1_val)
+// printf("rs2:  %d\n", execute.io.next_instruction.bits.rs2)
+// printf("rs2_val:   %x\n", execute.io.next_instruction.bits.rs2_val)
+// printf("imm:  %d\n", execute.io.next_instruction.bits.immediate)
+// printf("pc_redir:  %b -> %d\n", execute.io.pc_redirect.valid, execute.io.pc_redirect.bits)
+// printf("jmp_flush: %b\n", execute.io.jump_flush)
+// printf("mem_stall: %b\n", execute.io.memory_stall)
+// printf("handshake_bypass: %b\n", execute.io.handshake_bypass)
+
+// printf("=== Writeback ===\n")
+// printf("valid:%b\n", writeback.io.instruction.valid)
+// printf("pc:   %d\n", writeback.io.instruction.bits.pc)
+// printf("opcode:%b\n", writeback.io.instruction.bits.opcode)
+// printf("rd:   %d\n", writeback.io.instruction.bits.rd)
+// printf("rd_wen:%b\n", writeback.io.instruction.bits.rd_wen)
+// printf("rd_val:%x\n", writeback.io.instruction.bits.rd_val)
+// printf("write_en:  %b\n", writeback.io.write_enable)
+// printf("write_addr:%d\n", writeback.io.write_address)
+// printf("write_val: %x\n", writeback.io.write_val)
+
+
+		// printf("=== Dump ===\n");
+		// printf("01: %x\n", registers.io.debug_1);
+		// printf("02: %x\n", registers.io.debug_2);
+		// printf("03: %x\n", registers.io.debug_3);
+		// printf("04: %x\n", registers.io.debug_4);
+		// printf("05: %x\n", registers.io.debug_5);
+		// printf("06: %x\n", registers.io.debug_6);
+		// printf("07: %x\n", registers.io.debug_7);
+		// printf("08: %x\n", registers.io.debug_8);
+		// printf("09: %x\n", registers.io.debug_9);
+		// printf("10: %x\n\n\n", registers.io.debug_10);		
+	}
+=======
+>>>>>>> origin/warps
 }
 
 // object Core extends App {
