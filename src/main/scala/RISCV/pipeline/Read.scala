@@ -28,11 +28,11 @@ class Read(cfg: GpuConfig) extends Module {
 	io.raw_hazard_stall := raw_hazard
 	io.register_read_enable := true.B
 
-  io.register_read_a := io.instruction.bits.rs1
-  io.register_read_b := io.instruction.bits.rs2
 
   val bundle = RegInit(0.U.asTypeOf(new InstructionBundle(cfg)))
   val valid  = RegInit(false.B)
+  io.register_read_a := Mux(io.stall, bundle.rs1, io.instruction.bits.rs1)
+  io.register_read_b := Mux(io.stall, bundle.rs2, io.instruction.bits.rs2)
   val bundle_w = WireDefault(bundle)
   when(io.flush) {
       valid := false.B

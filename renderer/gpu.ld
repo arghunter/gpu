@@ -35,6 +35,15 @@ SECTIONS {
         __bss_end = .;
     }
 
+    /* Outside __bss_start/__bss_end on purpose: the framebuffer and depth
+     * buffer are 600 KB together and are fully overwritten by raster_clear
+     * every frame, so zeroing them at boot would cost millions of cycles for
+     * nothing. */
+    .noinit (NOLOAD) : {
+        . = ALIGN(4);
+        *(.noinit .noinit.*)
+    }
+
     _end = .;
 
 
