@@ -1,136 +1,62 @@
 package RISCV
 
 import chisel3._
+import chisel3.util._
 import _root_.circt.stage.ChiselStage
 
-/* 
- * The register file module for RISC-V
- * 32 registers, each 32 bits wide
- * Dual read ports, single write port
- * Register x0 is hardwired to 0
- * 
- * This register file supports a simultaneous combinational read from two registers via the two read addresses and output ports
- * as well as a synchronous write to one register on the rising edge of the clock when write_enable is high.
- * 
- * I/O:
-    * in: 32-bit input data to write to register
-    * write_address: 5-bit address of register to write to
-    * read_address_a: 5-bit address of register to read from (port A)
-    * read_address_b: 5-bit address of register to read from (port B)
-    * write_enable: boolean signal to enable writing to register
-    * out_a: 32-bit output data from read port A
-    * out_b: 32-bit output data from read port B
- *
- */
-
-class Registers() extends Module {
+class Registers(cfg: GpuConfig) extends Module {
   val io = IO(new Bundle {
-    val write_enable   = Input(Bool())
-    val write_address  = Input(UInt(5.W))
-    val in             = Input(UInt(32.W))
-    val write_enable2   = Input(Bool())
-    val write_address2  = Input(UInt(5.W))
-    val in2            = Input(UInt(32.W))
-    val read_address_a = Input(UInt(5.W))
-    val read_address_b = Input(UInt(5.W))
-    val out_a          = Output(UInt(32.W))
-    val out_b          = Output(UInt(32.W))
+    val write_enable = Input(Bool())
+    val write_address = Input(UInt(7.W))
+    val write_mask = Input(UInt(cfg.nLanes.W))
+    val in = Input(Vec(cfg.nLanes,UInt(32.W)))
+    val write_enable2  = Input(Bool())
+    val write_address2 = Input(UInt(7.W))
+    val write_mask2 = Input(UInt(cfg.nLanes.W))
+    val in2  = Input(Vec(cfg.nLanes,UInt(32.W)))
+    val read_enable = Input(Bool())
+    val read_address_a = Input(UInt(7.W))
+    val read_address_b = Input(UInt(7.W))
+    val out_a = Output(Vec(cfg.nLanes,UInt(32.W)))
+    val out_b = Output(Vec(cfg.nLanes,UInt(32.W)))
 
-    val debug_1  = Output(UInt(32.W))
-    val debug_2  = Output(UInt(32.W))
-    val debug_3  = Output(UInt(32.W))
-    val debug_4  = Output(UInt(32.W))
-    val debug_5  = Output(UInt(32.W))
-    val debug_6  = Output(UInt(32.W))
-    val debug_7  = Output(UInt(32.W))
-    val debug_8  = Output(UInt(32.W))
-    val debug_9  = Output(UInt(32.W))
-    val debug_10 = Output(UInt(32.W))
-    val debug_11 = Output(UInt(32.W))
-    val debug_12 = Output(UInt(32.W))
-    val debug_13 = Output(UInt(32.W))
-    val debug_14 = Output(UInt(32.W))
-    val debug_15 = Output(UInt(32.W))
-    val debug_16 = Output(UInt(32.W))
-    val debug_17 = Output(UInt(32.W))
-    val debug_18 = Output(UInt(32.W))
-    val debug_19 = Output(UInt(32.W))
-    val debug_20 = Output(UInt(32.W))
-    val debug_21 = Output(UInt(32.W))
-    val debug_22 = Output(UInt(32.W))
-    val debug_23 = Output(UInt(32.W))
-    val debug_24 = Output(UInt(32.W))
-    val debug_25 = Output(UInt(32.W))
-    val debug_26 = Output(UInt(32.W))
-    val debug_27 = Output(UInt(32.W))
-    val debug_28 = Output(UInt(32.W))
-    val debug_29 = Output(UInt(32.W))
-    val debug_30 = Output(UInt(32.W))
-    val debug_31 = Output(UInt(32.W))
   })
 
+    def is_x0(a: UInt): Bool = a(4, 0) === 0.U
 
-    val regs = RegInit(VecInit(Seq.fill(32.toInt)(0.U(32.W))))
+    val bank0 = Seq.fill(cfg.nLanes)(SyncReadMem(128, UInt(32.W)))
+    val bank1 = Seq.fill(cfg.nLanes)(SyncReadMem(128, UInt(32.W)))
+    val lvt   = RegInit(VecInit(Seq.fill(128)(0.U(cfg.nLanes.W))))
 
-    // Dual read ports
-    io.out_a := (regs(io.read_address_a))
-    io.out_b := (regs(io.read_address_b))
+    val w1 = io.write_enable && !is_x0(io.write_address)
+    val w2 = io.write_enable2 && !is_x0(io.write_address2)
+    val same = io.write_address === io.write_address2
+    val mask1 = io.write_mask
+    val mask2 = Mux(w1 && same, io.write_mask2 & ~io.write_mask, io.write_mask2)
 
-    io.debug_1 := regs(1);
-    io.debug_2 := regs(2);
-    io.debug_3 := regs(3);
-    io.debug_4 := regs(4);
-    io.debug_5 := regs(5);
-    io.debug_6 := regs(6);
-    io.debug_7 := regs(7);
-    io.debug_8 := regs(8);
-    io.debug_9 := regs(9);
-    io.debug_10 := regs(10);
-    io.debug_11 := regs(11);
-    io.debug_12 := regs(12);
-    io.debug_13 := regs(13);
-    io.debug_14 := regs(14);
-    io.debug_15 := regs(15);
-    io.debug_16 := regs(16);
-    io.debug_17 := regs(17);
-    io.debug_18 := regs(18);
-    io.debug_19 := regs(19);
-    io.debug_20 := regs(20);
-    io.debug_21 := regs(21);
-    io.debug_22 := regs(22);
-    io.debug_23 := regs(23);
-    io.debug_24 := regs(24);
-    io.debug_25 := regs(25);
-    io.debug_26 := regs(26);
-    io.debug_27 := regs(27);
-    io.debug_28 := regs(28);
-    io.debug_29 := regs(29);
-    io.debug_30 := regs(30);
-    io.debug_31 := regs(31);
-
-
-    //printf("Regs: [%d]=%d, [%d]=%d, WE=%b, WA=%d, IN=%d\n", io.read_address_a, io.out_a, io.read_address_b, io.out_b, io.write_enable, io.write_address, io.in)
-
-    when (io.write_enable && (io.write_address =/= 0.U)) {
-        regs(io.write_address) := io.in
-    }
-    when (io.write_enable2 && (io.write_address2 =/= 0.U) && !(io.write_enable&&io.write_address === io.write_address2)) {
-        regs(io.write_address2) := io.in2
+    for (i <- 0 until cfg.nLanes) {
+      when(w1 && mask1(i)) { bank0(i).write(io.write_address, io.in(i)) }
+      when(w2 && mask2(i)) { bank1(i).write(io.write_address2, io.in2(i)) }
     }
 
-  // val REG_COUNT = 32
+    when(w1) {
+      lvt(io.write_address) := (lvt(io.write_address) & ~mask1) | Mux(w2 && same, mask2, 0.U)
+    }
+    when(w2 && !(w1 && same)) {
+      lvt(io.write_address2) := lvt(io.write_address2) | mask2
+    }
 
-  // val bank_a = SyncReadMem(REG_COUNT, UInt(32.W))
-  // val bank_b = SyncReadMem(REG_COUNT, UInt(32.W))
+    val sel_a = RegEnable(lvt(io.read_address_a), 0.U(cfg.nLanes.W), io.read_enable)
+    val sel_b = RegEnable(lvt(io.read_address_b), 0.U(cfg.nLanes.W), io.read_enable)
+    val a_x0 = RegEnable(is_x0(io.read_address_a), true.B, io.read_enable)
+    val b_x0 = RegEnable(is_x0(io.read_address_b), true.B, io.read_enable)
 
-  // when(io.write_enable && io.write_address =/= 0.U) {
-  //   bank_a.write(io.write_address, io.in)
-  //   bank_b.write(io.write_address, io.in)
-  // }
-
-  // val raw_a = bank_a.read(io.read_address_a, true.B)
-  // val raw_b = bank_b.read(io.read_address_b, true.B)
-
-  // io.out_a := Mux(RegNext(io.read_address_a) === 0.U, 0.U, raw_a)
-  // io.out_b := Mux(RegNext(io.read_address_b) === 0.U, 0.U, raw_b)
+    for (i <- 0 until cfg.nLanes) {
+      io.out_a(i) := Mux(a_x0, 0.U, Mux(sel_a(i),
+        bank1(i).read(io.read_address_a, io.read_enable),
+        bank0(i).read(io.read_address_a, io.read_enable)))
+      io.out_b(i) := Mux(b_x0, 0.U, Mux(sel_b(i),
+        bank1(i).read(io.read_address_b, io.read_enable),
+        bank0(i).read(io.read_address_b, io.read_enable)))
+    }
 }

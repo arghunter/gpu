@@ -1,11 +1,27 @@
 #include <stdint.h>
 
-__attribute__((naked)) void _start(void) {
+__attribute__((naked, section(".text.unlikely"))) void _start(void) {
     __asm__ volatile(
+        ".option push\n"
+        ".option norelax\n"
+        "la   gp, __global_pointer$\n"
+        ".option pop\n"
         "li sp, 0x8000000\n"
         "call main\n"
         "loop: j loop\n"
     );
+}
+
+static inline int lane_id(void) {
+    int r;
+    __asm__ volatile(".insn r 0x0B, 0, 0, %0, x0, x0" : "=r"(r));
+    return r;
+}
+
+static inline int warp_id(void) {
+    int r;
+    __asm__ volatile(".insn r 0x0B, 0, 1, %0, x0, x0" : "=r"(r));
+    return r;
 }
 
 /* ---- provided debug hooks ---- */
@@ -47,16 +63,31 @@ static void trace(char *label, unsigned int value) {
 
 /* Map an escape iteration count to a 24-bit RGB color (0x00RRGGBB). */
 static unsigned int iter_to_color(int iter) {
-    if (iter == MAX_ITER) {
-        return 0x000000;
-    }
+	int id = warp_id();
 
-    unsigned int t = (unsigned int)iter;
-    unsigned int r = (t * 8) & 0xFF;
-    unsigned int g = (t * 5) & 0xFF;
-    unsigned int b = (t * 13) & 0xFF;
+	if(id == 0) {
+		if (iter == MAX_ITER) {
+			return 0x000000;
+		}
 
-    return (r << 16) | (g << 8) | b;
+		unsigned int t = (unsigned int)iter;
+		unsigned int r = (t * 8) & 0xFF;
+		unsigned int g = (t * 5) & 0xFF;
+		unsigned int b = (t * 13) & 0xFF;
+
+		return (r << 16) | (g << 8) | b;
+	} else {
+		if (iter == MAX_ITER) {
+			return 0xFFFFFF;
+		}
+
+		unsigned int t = (unsigned int)iter;
+		unsigned int r = (t * 8) & 0xFF;
+		unsigned int g = (t * 5) & 0xFF;
+		unsigned int b = (t * 13) & 0xFF;
+
+		return 0xFFFFFF - ((r << 16) | (g << 8) | b);
+	}
 }
 
 void draw_mandelbrot(volatile unsigned int* frame, int cx, int cy, int zoom) {
@@ -71,9 +102,9 @@ void draw_mandelbrot(volatile unsigned int* frame, int cx, int cy, int zoom) {
     trace("draw: cy=", (unsigned int)cy);
     trace("draw: zoom=", (unsigned int)zoom);
     trace("draw: x_start=", (unsigned int)x_start);
-    // trace("draw: y_start=", (unsigned int)y_start);
-    // trace("draw: x_step=", (unsigned int)x_step);
-    // trace("draw: y_step=", (unsigned int)y_step);
+    trace("draw: y_start=", (unsigned int)y_start);
+    trace("draw: x_step=", (unsigned int)x_step);
+    trace("draw: y_step=", (unsigned int)y_step);
 
     for (int py = 0; py < 240; py++) {
         int ci = y_start + py * y_step;
@@ -111,6 +142,11 @@ int main() {
     volatile unsigned int* timer = (volatile unsigned int*)0x8000004;
 
     debug_log("boot\n");
+
+	int id = warp_id();
+	debug_log("Warp Id: ");
+	debug_hex32((unsigned int)id);
+	debug_log("\n");
 
     int cx = -768;
     int cy = 0;

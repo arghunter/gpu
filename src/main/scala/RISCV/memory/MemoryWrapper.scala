@@ -6,7 +6,7 @@ import chisel3.util.experimental.loadMemoryFromFileInline
 
 
 
-class MemoryWrapper(lineWidth: Int = 128, clockFreq: Int = 167000000, baud: Int = 6000000) extends Module {
+class MemoryWrapper(lineWidth: Int = 128, clockFreq: Int = 167000000, baud: Int = 6000000, cfg: GpuConfig = GpuConfig()) extends Module {
   val io = IO(new Bundle {
     val icache_req = Input(new MemReq)
     val icache_start = Input(Bool())
@@ -19,9 +19,11 @@ class MemoryWrapper(lineWidth: Int = 128, clockFreq: Int = 167000000, baud: Int 
     val dcache_ready = Output(Bool())
     val dcache_valid = Output(Bool())
     val dcache_data = Output(UInt(32.W))
-    val dcache_rd = Input(UInt(5.W))
+    val dcache_rd = Input(UInt(7.W))
+    val dcache_lane = Input(UInt(log2Up(cfg.nLanes).max(1).W))
     val dcache_wen = Input(Bool())
-    val dcache_rd_out = Output(UInt(5.W))
+    val dcache_rd_out = Output(UInt(7.W))
+    val dcache_lane_out = Output(UInt(log2Up(cfg.nLanes).max(1).W))
     val dcache_wen_out = Output(Bool())
 
 
@@ -42,12 +44,13 @@ class MemoryWrapper(lineWidth: Int = 128, clockFreq: Int = 167000000, baud: Int 
   })
 
 
-  val mem = Module(new MemoryInterface(lineWidth))
+  val mem = Module(new MemoryInterface(lineWidth, cfg))
   val hardwareTimer = Module(new HardwareTimer(clockFreq))
   val keyTracker = Module(new UartKeyboardTracker(clockFreq, baud))
   val uartTx = Module(new UartTxFifo(clockFreq, baud)) 
   val bypass_pending = RegInit(false.B)
-  val bypass_rd  = RegInit(0.U(5.W))
+  val bypass_rd  = RegInit(0.U(7.W))
+  val bypass_lane = RegInit(0.U(log2Up(cfg.nLanes).max(1).W))
   val bypass_wen = RegInit(false.B)
   val bypass_val = RegInit(0.U(32.W))
   
@@ -71,6 +74,16 @@ class MemoryWrapper(lineWidth: Int = 128, clockFreq: Int = 167000000, baud: Int 
   val is_debug_num = io.dcache_req.address === 0x70000008.U
   val is_switch = io.dcache_req.address === 0x9000000.U
   val is_excep = is_vga || is_htimer || is_keytracker || is_uarttx || is_debug_char || is_debug_num || is_switch
+
+//  when(io.dcache_start) {
+//     printf("REQ excep=%b vga=%b kt=%b ht=%b %c addr=%x rd=%d\n",
+//            is_excep, is_vga, is_keytracker, is_htimer,
+//            Mux(io.dcache_req.write, 0x57.U, 0x52.U),
+//            io.dcache_req.address, io.dcache_rd)
+//   }
+//   when(io.dcache_wen_out) {
+//     printf("RET rd=%d data=%x\n", io.dcache_rd_out, io.dcache_data)
+//   }
   when(is_vga &&  io.dcache_start){
     // printf("is vga bypassing\n\n\n\n")
   }
@@ -96,8 +109,10 @@ class MemoryWrapper(lineWidth: Int = 128, clockFreq: Int = 167000000, baud: Int 
   io.dcache_ready := mem.io.dcache_ready && !bypass_pending
   io.dcache_data := mem.io.dcache_data
   mem.io.dcache_rd := io.dcache_rd
+  mem.io.dcache_lane := io.dcache_lane
   mem.io.dcache_wen := io.dcache_wen
   io.dcache_rd_out := mem.io.dcache_rd_out
+  io.dcache_lane_out := mem.io.dcache_lane_out
   io.dcache_wen_out := mem.io.dcache_wen_out
 
   val keytracker_word = (io.dcache_req.address - KEYTRACKER_BASE)(5, 2)
@@ -131,6 +146,7 @@ class MemoryWrapper(lineWidth: Int = 128, clockFreq: Int = 167000000, baud: Int 
   when(dcache_bypass) {
     bypass_pending := true.B
     bypass_rd  := io.dcache_rd
+    bypass_lane := io.dcache_lane
     bypass_wen := io.dcache_wen
     bypass_val := Mux(is_htimer, hardwareTimer.io.micros,
                   Mux(is_keytracker, keytracker_rdata, 0.U))
@@ -142,6 +158,7 @@ class MemoryWrapper(lineWidth: Int = 128, clockFreq: Int = 167000000, baud: Int 
   when(bypass_fire) {
     io.dcache_data := bypass_val
     io.dcache_rd_out := bypass_rd
+    io.dcache_lane_out := bypass_lane
     io.dcache_wen_out := bypass_wen
   }
 

@@ -14,7 +14,7 @@ class MemReq extends Bundle {
   val write = Bool()
 }
 
-class MemoryInterface(lineWidth: Int = 128) extends Module {
+class MemoryInterface(lineWidth: Int = 128, cfg: GpuConfig = GpuConfig()) extends Module {
   val io = IO(new Bundle {
     val icache_req = Input(new MemReq)
     val icache_start = Input(Bool())
@@ -26,10 +26,12 @@ class MemoryInterface(lineWidth: Int = 128) extends Module {
     val dcache_ready = Output(Bool())
     val dcache_valid = Output(Bool())
     val dcache_data = Output(UInt(32.W))
-    val dcache_rd = Input(UInt(5.W))
+    val dcache_rd = Input(UInt(7.W))
+    val dcache_lane = Input(UInt(log2Up(cfg.nLanes).max(1).W))
     val dcache_wen = Input(Bool())
 
-    val dcache_rd_out = Output(UInt(5.W))
+    val dcache_rd_out = Output(UInt(7.W))
+    val dcache_lane_out = Output(UInt(log2Up(cfg.nLanes).max(1).W))
     val dcache_wen_out = Output(Bool())
 
 
@@ -43,7 +45,7 @@ class MemoryInterface(lineWidth: Int = 128) extends Module {
   val icache = Module(new ICache(lineWidth))
   val dcache = Module(new DCache(lineWidth))
   val arbiter = Module(new CacheArbiter(lineWidth))
-  val dcache_queue = Module(new DCacheQueue(lineWidth))
+  val dcache_queue = Module(new DCacheQueue(lineWidth, cfg))
   val l2_cache = Module(new L2Cache(lineWidth))
 
   io.mem_req <> l2_cache.io.mem_req
@@ -64,6 +66,7 @@ class MemoryInterface(lineWidth: Int = 128) extends Module {
   dcache.io.start := dcache_queue.io.dcache_start
   dcache_queue.io.req.req := io.dcache_req
   dcache_queue.io.req.rd := io.dcache_rd
+  dcache_queue.io.req.lane := io.dcache_lane
   dcache_queue.io.req.wen := io.dcache_wen
   dcache_queue.io.start :=io.dcache_start
   dcache_queue.io.dcache_ready := dcache.io.ready
@@ -78,6 +81,7 @@ class MemoryInterface(lineWidth: Int = 128) extends Module {
   io.dcache_valid := dcache_queue.io.valid
   io.dcache_data := dcache_queue.io.data
   io.dcache_rd_out := dcache_queue.io.rd
+  io.dcache_lane_out := dcache_queue.io.lane
   io.dcache_wen_out := dcache_queue.io.wen
 
 
